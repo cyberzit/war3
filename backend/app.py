@@ -3289,6 +3289,19 @@ def social_sync(user=Depends(current_user)):
             "ORDER BY unread DESC, (u.last_seen > ?) DESC, u.name ASC",
             (user["id"], user["id"], now - 35.0),
         ).fetchall()
+        extra_dm_rows = db.execute(
+            "SELECT u.rowid AS rowid, u.*, "
+            "r.id AS room_id, r.name AS room_name, "
+            "(SELECT count(*) FROM direct_messages dm WHERE dm.sender_id=u.id AND dm.receiver_id=? AND dm.is_read=0) AS unread "
+            "FROM users u "
+            "LEFT JOIN members m ON m.user_id=u.id "
+            "LEFT JOIN rooms r ON r.id=m.room_id "
+            "WHERE u.id IN (SELECT DISTINCT sender_id FROM direct_messages WHERE receiver_id=? AND is_read=0) "
+            "AND u.id NOT IN (SELECT friend_id FROM friendships WHERE user_id=? AND status='accepted') "
+            "AND u.id NOT IN (SELECT blocked_id FROM blocks WHERE user_id=?)",
+            (user["id"], user["id"], user["id"], user["id"]),
+        ).fetchall()
+        friend_rows = list(extra_dm_rows) + list(friend_rows)
         req_in_rows = db.execute(
             "SELECT u.rowid AS rowid, u.name, f.created "
             "FROM friendships f JOIN users u ON u.id=f.user_id "

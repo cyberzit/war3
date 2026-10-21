@@ -5,6 +5,7 @@ Produces:
    built-in auto-installer + Desktop shortcut creator + Hardware-Accelerated WPF Modern Dark UI).
 2. MongolRanger-macOS-Universal.zip (macOS Apple Silicon & Intel client).
 """
+import base64
 import io
 from pathlib import Path
 import struct
@@ -13,54 +14,57 @@ import zipfile
 import zlib
 
 
-def create_mongolranger_ico(ico_path: Path):
-    """Generates a valid 48x48 32-bit RGBA PNG-compressed Windows .ICO file."""
-    w, h = 48, 48
+def _build_zevarena_png_bytes(w: int = 48, h: int = 48, circular: bool = False) -> bytes:
     raw_rows = bytearray()
+    cx = (w - 1) / 2.0
+    cy = (h - 1) / 2.0
+    scale = (w / 2.0) * 0.92
     for y in range(h):
         raw_rows.append(0)  # PNG filter type 0
         for x in range(w):
-            # Normalized coords [-1, 1]
-            nx = (x - 23.5) / 22.0
-            ny = (y - 23.5) / 22.0
-            # Shield shape
-            in_shield = False
-            if -0.82 <= ny <= 0.15 and abs(nx) <= 0.82:
-                in_shield = True
-            elif 0.15 < ny <= 0.88:
-                max_x = 0.82 * (1.0 - ((ny - 0.15) / 0.78) ** 1.35)
-                if abs(nx) <= max_x:
-                    in_shield = True
+            nx = (x - cx) / scale
+            ny = (y - cy) / scale
+            if circular:
+                dist = (nx * nx + ny * ny) ** 0.5
+                in_shape = dist <= 0.92
+                edge_dist = 0.92 - dist
+            else:
+                in_shape = False
+                if -0.82 <= ny <= 0.15 and abs(nx) <= 0.82:
+                    in_shape = True
+                elif 0.15 < ny <= 0.88:
+                    max_x = 0.82 * (1.0 - ((ny - 0.15) / 0.78) ** 1.35)
+                    if abs(nx) <= max_x:
+                        in_shape = True
+                edge_dist = min(0.82 - abs(nx), 0.88 - ny, ny + 0.82)
 
-            if not in_shield:
+            if not in_shape:
                 raw_rows.extend((0, 0, 0, 0))
                 continue
 
-            # Border check
-            edge_dist = min(0.82 - abs(nx), 0.88 - ny, ny + 0.82)
-            # M letter geometry inside shield
-            in_m = False
-            if -0.42 <= ny <= 0.38:
-                # Left or right vertical bar
-                if 0.34 <= abs(nx) <= 0.52:
-                    in_m = True
-                # V diagonals of M
-                diag_y = -0.35 + abs(nx) * 1.45
-                if abs(ny - diag_y) <= 0.13 and abs(nx) <= 0.42:
-                    in_m = True
+            # Z letter geometry inside shield/circle
+            in_z = False
+            if -0.44 <= ny <= -0.25 and -0.42 <= nx <= 0.42:
+                in_z = True
+            elif 0.25 <= ny <= 0.44 and -0.42 <= nx <= 0.42:
+                in_z = True
+            elif -0.36 <= ny <= 0.36:
+                diag_x = -ny * 0.95
+                if abs(nx - diag_x) <= 0.135 and abs(nx) <= 0.42:
+                    in_z = True
 
-            if in_m:
-                # Bright White/Cyan M emblem
-                raw_rows.extend((250, 252, 255, 255))
+            if in_z:
+                # Bright White/Cyan Z emblem
+                raw_rows.extend((248, 252, 255, 255))
             elif edge_dist < 0.11:
                 # Glowing Violet-Emerald border
-                t = (y / float(h))
+                t = y / float(h)
                 r = int(139 * (1 - t) + 16 * t)
                 g = int(92 * (1 - t) + 185 * t)
                 b = int(246 * (1 - t) + 129 * t)
                 raw_rows.extend((r, g, b, 255))
             else:
-                # Deep dark indigo shield interior
+                # Deep dark indigo interior
                 raw_rows.extend((15, 21, 38, 255))
 
     def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
@@ -69,14 +73,18 @@ def create_mongolranger_ico(ico_path: Path):
 
     ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
     idat = zlib.compress(bytes(raw_rows), 9)
-    png_bytes = (
+    return (
         b"\x89PNG\r\n\x1a\n"
         + png_chunk(b"IHDR", ihdr)
         + png_chunk(b"IDAT", idat)
         + png_chunk(b"IEND", b"")
     )
 
-    # ICO header (1 image, 48x48, 32bpp, PNG payload)
+
+def create_mongolranger_ico(ico_path: Path):
+    """Generates a valid 48x48 32-bit RGBA PNG-compressed Windows .ICO file with Z emblem."""
+    w, h = 48, 48
+    png_bytes = _build_zevarena_png_bytes(w, h, circular=False)
     ico_dir = struct.pack("<HHH", 0, 1, 1)
     ico_entry = struct.pack("<BBBBHHII", w, h, 0, 0, 1, 32, len(png_bytes), 6 + 16)
     ico_path.write_bytes(ico_dir + ico_entry + png_bytes)
@@ -610,6 +618,21 @@ namespace MongolRanger
         private static Border inviteBannerOverlay;
         private static TextBlock lblInviteBannerText;
 
+        // Floating Chat & Invite Popup Elements
+        private static Border floatingChatPopup;
+        private static TextBlock lblPopupChatTitle;
+        private static Border badgePopupNewMsg;
+        private static Border popupInviteBanner;
+        private static TextBlock lblPopupInviteText;
+        private static ScrollViewer popupDmScroll;
+        private static ItemsControl popupDmMessagesList;
+        private static TextBox txtPopupDmInput;
+        private static TextBlock lblPopupDmPlaceholder;
+        private static string popupChatFriendName = "";
+        private static int lastPopupDmMaxMsgId = 0;
+        private static int lastOpenedPopupInviteId = 0;
+        private static Dictionary<string, int> lastFriendUnreadMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         private static Grid codeModalOverlay;
         private static TextBlock lblCodeModalTitle;
         private static TextBlock lblCodeModalSub;
@@ -885,20 +908,20 @@ namespace MongolRanger
                       </StackPanel>
                     </Border>
 
-                    <!-- Ready to Play Button -->
-                    <Border Name='BtnSidebarReadyPlay' CornerRadius='8' Height='32' Cursor='Hand' BorderBrush='#34D399' BorderThickness='1'>
+                    <!-- Match History Button -->
+                    <Border Name='BtnSidebarReadyPlay' CornerRadius='8' Height='32' Cursor='Hand' BorderBrush='#7C3AED' BorderThickness='1' ToolTip='Дарж сүүлийн 10 тоглолтын түүх болон ELO үзүүлэлтээ харна уу'>
                       <Border.Background>
                         <LinearGradientBrush StartPoint='0,0' EndPoint='1,0'>
-                          <GradientStop Color='#059669' Offset='0'/>
-                          <GradientStop Color='#10B981' Offset='1'/>
+                          <GradientStop Color='#3B1D7A' Offset='0'/>
+                          <GradientStop Color='#6D28D9' Offset='1'/>
                         </LinearGradientBrush>
                       </Border.Background>
                       <Grid Margin='10,0'>
                         <StackPanel Orientation='Horizontal' VerticalAlignment='Center'>
-                          <TextBlock Text='🎮' Foreground='White' FontSize='12' VerticalAlignment='Center' Margin='0,0,7,0'/>
-                          <TextBlock Text='Ready to Play' Foreground='White' FontWeight='ExtraBold' FontSize='12' VerticalAlignment='Center'/>
+                          <TextBlock Text='📜' Foreground='#FBBF24' FontSize='12' VerticalAlignment='Center' Margin='0,0,7,0'/>
+                          <TextBlock Text='Тоглолтын түүх' Foreground='White' FontWeight='ExtraBold' FontSize='12' VerticalAlignment='Center'/>
                         </StackPanel>
-                        <TextBlock Text='›' Foreground='#D1FAE5' FontSize='16' FontWeight='Bold' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,-2,0,0'/>
+                        <TextBlock Text='›' Foreground='#DDD6FE' FontSize='16' FontWeight='Bold' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,-2,0,0'/>
                       </Grid>
                     </Border>
                   </StackPanel>
@@ -2400,6 +2423,113 @@ namespace MongolRanger
               </Border>
             </Grid>
 
+            <!-- FLOATING QUICK CHAT & INVITE POPUP (Auto-opens on incoming DM or Room Invite across any tab) -->
+            <Border Grid.Row='0' Grid.RowSpan='2' Name='FloatingChatPopup' Visibility='Collapsed' Panel.ZIndex='75'
+                    Width='375' Height='420' HorizontalAlignment='Right' VerticalAlignment='Bottom' Margin='0,0,6,6'
+                    Background='#0D1324' CornerRadius='14' BorderBrush='#7C3AED' BorderThickness='1.5'>
+              <Border.Effect>
+                <DropShadowEffect Color='#000000' BlurRadius='32' ShadowDepth='8' Opacity='0.75'/>
+              </Border.Effect>
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height='Auto'/>
+                  <RowDefinition Height='Auto'/>
+                  <RowDefinition Height='*'/>
+                  <RowDefinition Height='Auto'/>
+                </Grid.RowDefinitions>
+
+                <!-- Popup Header -->
+                <Border Grid.Row='0' Background='#171F38' CornerRadius='12,12,0,0' BorderBrush='#283558' BorderThickness='0,0,0,1' Padding='12,9'>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width='*'/>
+                      <ColumnDefinition Width='Auto'/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column='0' Name='BtnPopupChatUserHdr' Orientation='Horizontal' VerticalAlignment='Center' Cursor='Hand' ToolTip='Тоглогчийн мэдээлэл харах / Өрөөнд урих'>
+                      <Ellipse Width='8' Height='8' Fill='#10B981' VerticalAlignment='Center' Margin='0,0,7,0'/>
+                      <TextBlock Name='LblPopupChatTitle' Text='💬 Чат' Foreground='White' FontWeight='ExtraBold' FontSize='13' VerticalAlignment='Center' MaxWidth='175' TextTrimming='CharacterEllipsis'/>
+                      <Border Name='BadgePopupNewMsg' Background='#10B981' CornerRadius='6' Padding='6,1.5' Margin='7,0,0,0' VerticalAlignment='Center'>
+                        <TextBlock Text='ШИНЭ' Foreground='#04130D' FontSize='9.5' FontWeight='ExtraBold'/>
+                      </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column='1' Orientation='Horizontal' VerticalAlignment='Center'>
+                      <Border Name='BtnPopupInviteFriend' Background='#0284C7' CornerRadius='6' Padding='7,3' Margin='0,0,5,0' Cursor='Hand' ToolTip='Энэ тоглогчийг одоогийн өрөөндөө урих'>
+                        <TextBlock Text='📨 Урих' Foreground='White' FontSize='10.5' FontWeight='Bold'/>
+                      </Border>
+                      <Border Name='BtnPopupExpandChat' Background='#1E293B' CornerRadius='6' Padding='7,3' Margin='0,0,5,0' Cursor='Hand' ToolTip='Найзууд &amp; Чат хуудас руу томруулж нээх'>
+                        <TextBlock Text='↗' Foreground='#CBD5E1' FontSize='11' FontWeight='ExtraBold'/>
+                      </Border>
+                      <Border Name='BtnCloseChatPopup' Background='#1E293B' CornerRadius='6' Padding='7,3' Cursor='Hand' ToolTip='Попап хаах'>
+                        <TextBlock Text='✕' Foreground='#F87171' FontSize='11' FontWeight='ExtraBold'/>
+                      </Border>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <!-- Optional Active Room Invite Banner inside Popup -->
+                <Border Grid.Row='1' Name='PopupInviteBanner' Visibility='Collapsed' Background='#132A4A' BorderBrush='#38BDF8' BorderThickness='0,0,0,1' Padding='11,8'>
+                  <StackPanel>
+                    <TextBlock Name='LblPopupInviteText' Text='📨 Таныг өрөөнд урьж байна!' Foreground='#F8FAFC' FontSize='11.5' FontWeight='Bold' TextWrapping='Wrap' Margin='0,0,0,6'/>
+                    <StackPanel Orientation='Horizontal'>
+                      <Border Name='BtnPopupAcceptInvite' Background='#10B981' CornerRadius='6' Padding='12,5' Margin='0,0,8,0' Cursor='Hand'>
+                        <TextBlock Text='✅ Урилга хүлээж авах (Орох)' Foreground='#04130D' FontWeight='ExtraBold' FontSize='11'/>
+                      </Border>
+                      <Border Name='BtnPopupDeclineInvite' Background='#EF4444' CornerRadius='6' Padding='10,5' Cursor='Hand'>
+                        <TextBlock Text='✕ Татгалзах' Foreground='White' FontWeight='Bold' FontSize='11'/>
+                      </Border>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- Messages List -->
+                <Border Grid.Row='2' Background='#090D18' Padding='10,8'>
+                  <ScrollViewer Name='PopupDmScroll' VerticalScrollBarVisibility='Auto' HorizontalScrollBarVisibility='Disabled'>
+                    <ItemsControl Name='PopupDmMessagesList'>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <StackPanel Margin='0,0,0,7'>
+                            <StackPanel Orientation='Horizontal'>
+                              <TextBlock Text='{Binding TimeStr}' Foreground='#64748B' FontSize='10.5' Margin='0,0,5,0' VerticalAlignment='Top'/>
+                              <TextBlock Text='{Binding SenderLabel}' Foreground='{Binding SenderFg}' FontWeight='ExtraBold' FontSize='12' Margin='0,0,5,0' VerticalAlignment='Top'/>
+                              <TextBlock Text='{Binding Text}' Foreground='#F1F5F9' FontWeight='SemiBold' FontSize='12' TextWrapping='Wrap' MaxWidth='245'/>
+                            </StackPanel>
+                            <Button Visibility='{Binding HasInviteVis}' Tag='{Binding InviteTag}' HorizontalAlignment='Left' Margin='38,5,0,2' Cursor='Hand'>
+                              <Button.Template>
+                                <ControlTemplate TargetType='Button'>
+                                  <Border Background='#10B981' CornerRadius='7' Padding='12,5' BorderBrush='#34D399' BorderThickness='1'>
+                                    <TextBlock Text='✅ Урилга хүлээж авах — Өрөөнд Орох' Foreground='#04130D' FontWeight='ExtraBold' FontSize='11.5'/>
+                                  </Border>
+                                </ControlTemplate>
+                              </Button.Template>
+                            </Button>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Border>
+
+                <!-- Quick Reply Input -->
+                <Border Grid.Row='3' Background='#12192E' CornerRadius='0,0,12,12' BorderBrush='#232F4D' BorderThickness='0,1,0,0' Padding='9,8'>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width='*'/>
+                      <ColumnDefinition Width='Auto'/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column='0' Background='#090D16' CornerRadius='8' BorderBrush='#283657' BorderThickness='1' Padding='10,6' Margin='0,0,7,0'>
+                      <Grid>
+                        <TextBlock Name='LblPopupDmPlaceholder' Text='Шууд хариу бичих...' Foreground='#64748B' FontSize='12' IsHitTestVisible='False' VerticalAlignment='Center'/>
+                        <TextBox Name='TxtPopupDmInput' MaxLength='400' Background='Transparent' Foreground='White' CaretBrush='White' BorderThickness='0' FontSize='12.5' VerticalContentAlignment='Center'/>
+                      </Grid>
+                    </Border>
+                    <Border Grid.Column='1' Name='BtnSendPopupDm' Background='#10B981' CornerRadius='8' Padding='14,6' Cursor='Hand'>
+                      <TextBlock Text='Илгээх ↵' Foreground='#04130D' FontWeight='ExtraBold' FontSize='12' VerticalAlignment='Center'/>
+                    </Border>
+                  </Grid>
+                </Border>
+              </Grid>
+            </Border>
+
           </Grid>
         </Grid>
 
@@ -2657,11 +2787,7 @@ namespace MongolRanger
             {
                 btnReadyPlay.MouseLeftButtonDown += (s, e) =>
                 {
-                    SwitchPage("LOBBIES");
-                    if (!string.IsNullOrEmpty(currentRoomId))
-                        LaunchWarcraftIfNotRunning(true);
-                    else
-                        LaunchWarcraft(false);
+                    OpenMatchHistory("");
                 };
             }
 
@@ -2947,7 +3073,15 @@ namespace MongolRanger
             Find<Border>("BtnModalDirectChat").MouseLeftButtonDown += (s, e) =>
             {
                 playerActionModalOverlay.Visibility = Visibility.Collapsed;
-                OpenDirectChatWith(selectedModalPlayerName);
+                if (pageFriends != null && pageFriends.Visibility == Visibility.Visible)
+                {
+                    OpenDirectChatWith(selectedModalPlayerName);
+                }
+                else
+                {
+                    OpenFloatingChatPopup(selectedModalPlayerName, false);
+                    if (txtPopupDmInput != null) txtPopupDmInput.Focus();
+                }
             };
             btnModalInviteRoom.MouseLeftButtonDown += (s, e) =>
             {
@@ -3015,6 +3149,86 @@ namespace MongolRanger
             }
             Find<Border>("BtnSendDm").MouseLeftButtonDown += (s, e) => SendDirectMessage();
             txtDmInput.KeyDown += (s, e) => { if (e.Key == Key.Enter) SendDirectMessage(); };
+
+            // Floating Chat & Invite Popup Controls
+            floatingChatPopup = Find<Border>("FloatingChatPopup");
+            lblPopupChatTitle = Find<TextBlock>("LblPopupChatTitle");
+            badgePopupNewMsg = Find<Border>("BadgePopupNewMsg");
+            popupInviteBanner = Find<Border>("PopupInviteBanner");
+            lblPopupInviteText = Find<TextBlock>("LblPopupInviteText");
+            popupDmScroll = Find<ScrollViewer>("PopupDmScroll");
+            popupDmMessagesList = Find<ItemsControl>("PopupDmMessagesList");
+            txtPopupDmInput = Find<TextBox>("TxtPopupDmInput");
+            lblPopupDmPlaceholder = Find<TextBlock>("LblPopupDmPlaceholder");
+
+            StackPanel btnPopupUserHdr = Find<StackPanel>("BtnPopupChatUserHdr");
+            if (btnPopupUserHdr != null)
+            {
+                btnPopupUserHdr.MouseLeftButtonDown += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(popupChatFriendName))
+                        OpenPlayerActionModal(popupChatFriendName);
+                };
+            }
+            Border btnPopupInviteFriend = Find<Border>("BtnPopupInviteFriend");
+            if (btnPopupInviteFriend != null)
+            {
+                btnPopupInviteFriend.MouseLeftButtonDown += (s, e) =>
+                {
+                    if (IsMatchOrRejoinLocked()) return;
+                    if (!string.IsNullOrEmpty(popupChatFriendName))
+                        InviteFriendToCurrentRoom(popupChatFriendName, false);
+                };
+            }
+            Border btnPopupExpand = Find<Border>("BtnPopupExpandChat");
+            if (btnPopupExpand != null)
+            {
+                btnPopupExpand.MouseLeftButtonDown += (s, e) =>
+                {
+                    string fn = popupChatFriendName;
+                    if (floatingChatPopup != null) floatingChatPopup.Visibility = Visibility.Collapsed;
+                    if (!string.IsNullOrEmpty(fn))
+                        OpenDirectChatWith(fn);
+                };
+            }
+            Border btnClosePopup = Find<Border>("BtnCloseChatPopup");
+            if (btnClosePopup != null)
+            {
+                btnClosePopup.MouseLeftButtonDown += (s, e) =>
+                {
+                    if (floatingChatPopup != null) floatingChatPopup.Visibility = Visibility.Collapsed;
+                };
+            }
+            Border btnPopupAcceptInv = Find<Border>("BtnPopupAcceptInvite");
+            if (btnPopupAcceptInv != null)
+                btnPopupAcceptInv.MouseLeftButtonDown += (s, e) => RespondToRoomInvite(true);
+            Border btnPopupDeclineInv = Find<Border>("BtnPopupDeclineInvite");
+            if (btnPopupDeclineInv != null)
+                btnPopupDeclineInv.MouseLeftButtonDown += (s, e) => RespondToRoomInvite(false);
+
+            if (popupDmMessagesList != null)
+                popupDmMessagesList.AddHandler(Button.ClickEvent, new RoutedEventHandler(OnDmInviteAcceptClick));
+
+            if (txtPopupDmInput != null)
+            {
+                txtPopupDmInput.TextChanged += (s, e) =>
+                {
+                    if (lblPopupDmPlaceholder != null)
+                        lblPopupDmPlaceholder.Visibility = string.IsNullOrEmpty(txtPopupDmInput.Text) ? Visibility.Visible : Visibility.Collapsed;
+                };
+                txtPopupDmInput.GotFocus += (s, e) =>
+                {
+                    if (badgePopupNewMsg != null) badgePopupNewMsg.Visibility = Visibility.Collapsed;
+                };
+                txtPopupDmInput.KeyDown += (s, e) =>
+                {
+                    if (e.Key == Key.Enter) SendPopupDirectMessage();
+                    else if (e.Key == Key.Escape && floatingChatPopup != null) floatingChatPopup.Visibility = Visibility.Collapsed;
+                };
+            }
+            Border btnSendPopupDm = Find<Border>("BtnSendPopupDm");
+            if (btnSendPopupDm != null)
+                btnSendPopupDm.MouseLeftButtonDown += (s, e) => SendPopupDirectMessage();
 
             codeModalOverlay = Find<Grid>("CodeModalOverlay");
             lblCodeModalTitle = Find<TextBlock>("LblCodeModalTitle");
@@ -5740,6 +5954,10 @@ namespace MongolRanger
                 {
                     LoadDirectMessagesAsync(activeDmFriendName, false);
                 }
+                if (!string.IsNullOrEmpty(popupChatFriendName) && floatingChatPopup != null && floatingChatPopup.Visibility == Visibility.Visible)
+                {
+                    LoadPopupDmMessagesAsync(popupChatFriendName, false);
+                }
             }
             if (string.IsNullOrEmpty(currentRoomId)) return;
             // While actively in a smooth CONTINUING match with no disconnected player, throttle room HTTP polling to every 24s (zero background churn)
@@ -6494,11 +6712,140 @@ namespace MongolRanger
         {
             if (string.IsNullOrEmpty(friendName)) return;
             activeDmFriendName = friendName;
+            if (floatingChatPopup != null) floatingChatPopup.Visibility = Visibility.Collapsed;
             SwitchPage("FRIENDS");
             lblDmHeaderTitle.Text = "💬 " + friendName + " — Хувийн Чат (Нэр дээр дарж урих / мэдээлэл харах)";
             lblDmHeaderSub.Text = "Мессеж бичээд Enter дарж илгээнэ үү";
             txtDmInput.Focus();
             LoadDirectMessagesAsync(friendName, true);
+        }
+
+        private static void OpenFloatingChatPopup(string friendName, bool isIncomingAlert)
+        {
+            if (string.IsNullOrEmpty(friendName) || floatingChatPopup == null) return;
+            bool friendChanged = !string.Equals(popupChatFriendName, friendName, StringComparison.OrdinalIgnoreCase);
+            popupChatFriendName = friendName;
+            if (friendChanged)
+            {
+                lastPopupDmMaxMsgId = 0;
+            }
+            if (lblPopupChatTitle != null)
+            {
+                lblPopupChatTitle.Text = friendName;
+            }
+            if (badgePopupNewMsg != null)
+            {
+                badgePopupNewMsg.Visibility = isIncomingAlert ? Visibility.Visible : Visibility.Collapsed;
+            }
+            floatingChatPopup.Visibility = Visibility.Visible;
+            LoadPopupDmMessagesAsync(friendName, true);
+            if (!isIncomingAlert && txtPopupDmInput != null)
+            {
+                txtPopupDmInput.Focus();
+            }
+        }
+
+        private static void LoadPopupDmMessagesAsync(string friendName, bool scrollEnd)
+        {
+            if (string.IsNullOrEmpty(friendName) || string.IsNullOrEmpty(authToken)) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string res = ApiRequest("GET", "/api/dm/" + Uri.EscapeDataString(friendName));
+                    List<ChatMessageItem> items = new List<ChatMessageItem>();
+                    List<string> objs = ExtractJsonObjectArray(res, "messages");
+                    int maxId = 0;
+                    bool newestIsFromFriend = false;
+                    foreach (string o in objs)
+                    {
+                        int mid = ExtractJsonInt(o, "id", 0);
+                        string sdr = ExtractJsonString(o, "sender");
+                        string txt = ExtractJsonString(o, "message");
+                        int ts = ExtractJsonInt(o, "created_at", 0);
+                        bool isMe = string.Equals(sdr, currentUsername, StringComparison.OrdinalIgnoreCase);
+                        if (mid >= maxId)
+                        {
+                            maxId = mid;
+                            newestIsFromFriend = !isMe;
+                        }
+
+                        string invTag = "";
+                        Visibility invVis = Visibility.Collapsed;
+                        Match invM = Regex.Match(txt, "\\[INVITE:([^:\\]]+):(\\d+)\\]");
+                        if (invM.Success)
+                        {
+                            string rIdToken = invM.Groups[1].Value;
+                            string invIdToken = invM.Groups[2].Value;
+                            txt = txt.Replace(invM.Value, "").Trim();
+                            if (!isMe)
+                            {
+                                invTag = rIdToken + ":" + invIdToken;
+                                invVis = Visibility.Visible;
+                            }
+                        }
+
+                        items.Add(new ChatMessageItem
+                        {
+                            TimeStr = FormatUnixTimeHm(ts),
+                            SenderLabel = sdr + ":",
+                            SenderFg = isMe ? HexBrush("#34D399") : HexBrush("#38BDF8"),
+                            Text = txt,
+                            TextFg = HexBrush("#FFFFFF"),
+                            InviteTag = invTag,
+                            HasInviteVis = invVis
+                        });
+                    }
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        lastFriendUnreadMap[friendName] = 0;
+                        if (!string.Equals(popupChatFriendName, friendName, StringComparison.OrdinalIgnoreCase)) return;
+                        bool hasNewIncoming = (lastPopupDmMaxMsgId > 0 && maxId > lastPopupDmMaxMsgId && newestIsFromFriend);
+                        if (maxId > 0) lastPopupDmMaxMsgId = maxId;
+                        if (popupDmMessagesList != null) popupDmMessagesList.ItemsSource = items;
+                        if (hasNewIncoming)
+                        {
+                            PlayNotifySound();
+                            if (badgePopupNewMsg != null) badgePopupNewMsg.Visibility = Visibility.Visible;
+                        }
+                        if (scrollEnd || hasNewIncoming)
+                        {
+                            try { if (popupDmScroll != null) popupDmScroll.ScrollToEnd(); } catch { }
+                        }
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        private static void SendPopupDirectMessage()
+        {
+            if (string.IsNullOrEmpty(popupChatFriendName) || txtPopupDmInput == null) return;
+            string msg = (txtPopupDmInput.Text ?? "").Trim();
+            if (string.IsNullOrEmpty(msg)) return;
+            txtPopupDmInput.Text = "";
+            if (badgePopupNewMsg != null) badgePopupNewMsg.Visibility = Visibility.Collapsed;
+            string target = popupChatFriendName;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string body = "{\"message\":\"" + msg.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"}";
+                    ApiRequest("POST", "/api/dm/" + Uri.EscapeDataString(target), body);
+                    LoadPopupDmMessagesAsync(target, true);
+                    if (string.Equals(activeDmFriendName, target, StringComparison.OrdinalIgnoreCase) && pageFriends != null && pageFriends.Visibility == Visibility.Visible)
+                    {
+                        LoadDirectMessagesAsync(target, true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        MessageBox.Show("Чат илгээхэд алдаа: " + ex.Message, "ZevArena");
+                    }));
+                }
+            });
         }
 
         private static void LoadDirectMessagesAsync(string friendName, bool scrollEnd)
@@ -6547,6 +6894,7 @@ namespace MongolRanger
                     }
                     mainWin.Dispatcher.BeginInvoke(new Action(() =>
                     {
+                        lastFriendUnreadMap[friendName] = 0;
                         if (!string.Equals(activeDmFriendName, friendName, StringComparison.OrdinalIgnoreCase)) return;
                         dmMessagesListCtrl.ItemsSource = items;
                         if (scrollEnd)
@@ -6585,7 +6933,7 @@ namespace MongolRanger
         {
             if (string.IsNullOrEmpty(activeDmFriendName))
             {
-                MessageBox.Show("Эхлээд зүүн талын жагсаалтаас чат бичих найзаа сонгоно уу!", "MongolRanger");
+                MessageBox.Show("Эхлээд зүүн талын жагсаалтаас чат бичих найзаа сонгоно уу!", "ZevArena");
                 return;
             }
             string msg = (txtDmInput.Text ?? "").Trim();
@@ -6616,7 +6964,8 @@ namespace MongolRanger
             {
                 string warn = "⚠️ Та эхлээд Lobby өрөө үүсгэх эсвэл өрөөнд орсны дараа найзаа урина уу!";
                 if (fromModal) lblPlayerModalFeedback.Text = warn;
-                else lblFriendStatusMsg.Text = warn;
+                else if (pageFriends != null && pageFriends.Visibility == Visibility.Visible) lblFriendStatusMsg.Text = warn;
+                else MessageBox.Show(warn, "ZevArena");
                 return;
             }
             string rid = currentRoomId;
@@ -6633,6 +6982,8 @@ namespace MongolRanger
                         else lblFriendStatusMsg.Text = okMsg;
                         if (string.Equals(activeDmFriendName, targetUser, StringComparison.OrdinalIgnoreCase))
                             LoadDirectMessagesAsync(targetUser, true);
+                        if (string.Equals(popupChatFriendName, targetUser, StringComparison.OrdinalIgnoreCase) && floatingChatPopup != null && floatingChatPopup.Visibility == Visibility.Visible)
+                            LoadPopupDmMessagesAsync(targetUser, true);
                     }));
                 }
                 catch (Exception ex)
@@ -6640,7 +6991,8 @@ namespace MongolRanger
                     mainWin.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         if (fromModal) lblPlayerModalFeedback.Text = "⚠️ " + ex.Message;
-                        else lblFriendStatusMsg.Text = "⚠️ " + ex.Message;
+                        else if (pageFriends != null && pageFriends.Visibility == Visibility.Visible) lblFriendStatusMsg.Text = "⚠️ " + ex.Message;
+                        else MessageBox.Show("⚠️ " + ex.Message, "ZevArena");
                     }));
                 }
             });
@@ -6651,6 +7003,7 @@ namespace MongolRanger
             if (accept && IsMatchOrRejoinLocked()) return;
             int invId = activeInviteId;
             inviteBannerOverlay.Visibility = Visibility.Collapsed;
+            if (popupInviteBanner != null) popupInviteBanner.Visibility = Visibility.Collapsed;
             lastDismissedInviteId = invId;
             if (invId <= 0) return;
 
@@ -6672,6 +7025,7 @@ namespace MongolRanger
 
                         mainWin.Dispatcher.BeginInvoke(new Action(() =>
                         {
+                            if (floatingChatPopup != null) floatingChatPopup.Visibility = Visibility.Collapsed;
                             currentRoomId = rid;
                             currentRoomName = string.IsNullOrEmpty(rname) ? "Invited Room" : rname;
                             currentRoomMapName = mFn;
@@ -6700,7 +7054,7 @@ namespace MongolRanger
                 {
                     mainWin.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        MessageBox.Show("Урилгаар өрөөнд ороход алдаа: " + ex.Message, "MongolRanger");
+                        MessageBox.Show("Урилгаар өрөөнд ороход алдаа: " + ex.Message, "ZevArena");
                     }));
                 }
             });
@@ -6803,13 +7157,47 @@ namespace MongolRanger
                         if (!string.IsNullOrEmpty(currentUsername)) UpdateHeroWelcome(currentUsername);
                         UpdateSidebarProfileBadges(myBadgeLbl, myBadgeCol, myEloDisp, myEloCol);
 
+                        // Detect new unread DMs per friend and pop up FloatingChatPopup automatically
+                        string popupTarget = "";
+                        foreach (FriendItem fi in parsedFriends)
+                        {
+                            int curUnrd = 0;
+                            int.TryParse(fi.UnreadText, out curUnrd);
+                            int prevUnrd = 0;
+                            lastFriendUnreadMap.TryGetValue(fi.Name, out prevUnrd);
+                            if (curUnrd > prevUnrd)
+                            {
+                                popupTarget = fi.Name;
+                            }
+                            else if (initialLoad && curUnrd > 0 && string.IsNullOrEmpty(popupTarget))
+                            {
+                                popupTarget = fi.Name;
+                            }
+                            lastFriendUnreadMap[fi.Name] = curUnrd;
+                        }
+
                         // unreadTotal from backend already includes unread DMs + incoming_requests + room_invites
                         int totalBadge = Math.Max(unreadTotal, parsedReqs.Count);
-                        if (!initialLoad && totalBadge > lastUnreadTotal)
+                        if ((!initialLoad && totalBadge > lastUnreadTotal) || !string.IsNullOrEmpty(popupTarget))
                         {
                             PlayNotifySound();
                         }
                         lastUnreadTotal = totalBadge;
+
+                        if (!string.IsNullOrEmpty(popupTarget))
+                        {
+                            if (pageFriends != null && pageFriends.Visibility == Visibility.Visible)
+                            {
+                                if (string.IsNullOrEmpty(activeDmFriendName))
+                                    OpenDirectChatWith(popupTarget);
+                                else if (!string.Equals(activeDmFriendName, popupTarget, StringComparison.OrdinalIgnoreCase))
+                                    OpenFloatingChatPopup(popupTarget, true);
+                            }
+                            else
+                            {
+                                OpenFloatingChatPopup(popupTarget, true);
+                            }
+                        }
 
                         if (badgeFriendsUnread != null && lblFriendsUnreadCount != null)
                         {
@@ -6825,21 +7213,30 @@ namespace MongolRanger
                         if (friendsListCtrl != null) friendsListCtrl.ItemsSource = parsedFriends;
                         if (blockedUsersListCtrl != null) blockedUsersListCtrl.ItemsSource = parsedBlocked;
 
-                        // Room Invite Banner
+                        // Room Invite Banner & Floating Chat Popup Invite Banner
                         if (latestInvId > 0 && latestInvId != lastDismissedInviteId)
                         {
                             activeInviteId = latestInvId;
-                            lblInviteBannerText.Text = "«" + latestInvFrom + "» таныг «" + latestInvRoomName + "» (" + latestInvMapName + ") өрөөнд тоглохоор урилаа!";
+                            string invText = "«" + latestInvFrom + "» таныг «" + latestInvRoomName + "» (" + latestInvMapName + ") өрөөнд тоглохоор урилаа!";
+                            lblInviteBannerText.Text = invText;
                             inviteBannerOverlay.Visibility = Visibility.Visible;
+                            if (lblPopupInviteText != null) lblPopupInviteText.Text = invText;
+                            if (popupInviteBanner != null) popupInviteBanner.Visibility = Visibility.Visible;
                             if (latestInvId != lastPlayedInviteSoundId)
                             {
                                 lastPlayedInviteSoundId = latestInvId;
                                 PlayNotifySound();
                             }
+                            if (latestInvId != lastOpenedPopupInviteId && !string.IsNullOrEmpty(latestInvFrom))
+                            {
+                                lastOpenedPopupInviteId = latestInvId;
+                                OpenFloatingChatPopup(latestInvFrom, true);
+                            }
                         }
                         else if (latestInvId == 0)
                         {
                             inviteBannerOverlay.Visibility = Visibility.Collapsed;
+                            if (popupInviteBanner != null) popupInviteBanner.Visibility = Visibility.Collapsed;
                         }
                     }));
                 }
@@ -8461,7 +8858,12 @@ def compile_standalone_exe(out_exe: Path) -> bool:
     cs_file = work_dir / "MongolRangerWpf.cs"
     ico_file = work_dir / "mongolranger.ico"
     manifest_file = work_dir / "app.manifest"
-    cs_file.write_text(WPF_CSHARP_SOURCE, encoding="utf-8")
+    import base64, re
+    b64_logo_z = base64.b64encode(_build_zevarena_png_bytes(64, 64, circular=False)).decode("ascii")
+    b64_avatar_z = base64.b64encode(_build_zevarena_png_bytes(64, 64, circular=True)).decode("ascii")
+    cs_src = re.sub(r'private const string B64_LOGO = "[^"]*";', f'private const string B64_LOGO = "{b64_logo_z}";', WPF_CSHARP_SOURCE)
+    cs_src = re.sub(r'private const string B64_AVATAR = "[^"]*";', f'private const string B64_AVATAR = "{b64_avatar_z}";', cs_src)
+    cs_file.write_text(cs_src, encoding="utf-8")
     manifest_file.write_text(APP_MANIFEST_XML, encoding="utf-8")
     create_mongolranger_ico(ico_file)
 
