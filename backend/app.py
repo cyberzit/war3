@@ -76,17 +76,17 @@ def get_downloads_dir() -> Path:
 DEFAULT_DOWNLOAD_SLOTS = [
     {
         "slot": "client_win",
-        "title": "MongolRanger Тоглоомын Програм (Windows)",
+        "title": "ZevArena Тоглоомын Програм (Windows .EXE)",
         "platform": "Windows 7 / 8 / 8.1 / 10 / 11 (32-bit & 64-bit — Бүх хувилбарт ажиллана)",
-        "version": "v4.8 Installer",
+        "version": "v4.8 .EXE Installer",
         "description": (
-            "Windows-ийн бүх хувилбар (Windows 7, 8, 8.1, 10, 11 • 32-bit ба 64-bit) дээр шууд сууж ажилладаг албан ёсны суулгагч (Installer). "
+            "ZIP задлах шаардлагагүй! Татаад 2 дармагц Windows-ийн бүх хувилбар (Windows 7, 8, 8.1, 10, 11 • 32-bit ба 64-bit) дээр шууд сууж ажилладаг албан ёсны .EXE суулгагч. "
             "Шинэ v4.8 Esport интерфэйс, 3 минутын Crash Reconnect, 3 давхар Anti-MapHack, WarKey болон ELO чансааны систем багтсан."
         ),
-        "filename": "MongolRanger.zip",
+        "filename": "ZevArena-Setup.exe",
         "external_url": "",
-        "size_label": "260 KB",
-        "button_text": "Програм Татах (Installer)",
+        "size_label": "265 KB",
+        "button_text": "Суулгагч Татах (.EXE)",
     },
     {
         "slot": "game_full",
@@ -1369,15 +1369,16 @@ def serve_v48_ui_preview():
     )
 
 
+@app.get("/updates/ZevArena-Setup.exe")
 @app.get("/updates/MongolRanger_4.8_x64-setup.exe")
 def download_nsis_setup_exe():
-    nsis_path = _find_download_file("MongolRanger_4.8_x64-setup.exe")
+    nsis_path = _find_download_file("ZevArena-Setup.exe") or _find_download_file("MongolRanger_4.8_x64-setup.exe")
     if nsis_path is None or not nsis_path.is_file():
-        raise HTTPException(404, "MongolRanger_4.8_x64-setup.exe not found")
+        raise HTTPException(404, "ZevArena-Setup.exe not found")
     return FileResponse(
         path=str(nsis_path),
         media_type="application/x-msdownload",
-        filename="MongolRanger_4.8_x64-setup.exe",
+        filename="ZevArena-Setup.exe",
     )
 
 
@@ -1544,7 +1545,7 @@ Get-Process -Name 'MongolRanger*' -ErrorAction SilentlyContinue | Stop-Process -
 Start-Sleep -Milliseconds 300
 $wc = New-Object System.Net.WebClient
 try {
-    $wc.DownloadFile('https://mongolranger.com/api/client/exe', $exe)
+    $wc.DownloadFile('https://zevarena.com/api/client/exe', $exe)
 } catch {
     $wc.DownloadFile('http://103.153.141.135/api/client/exe', $exe)
 }
@@ -1554,10 +1555,10 @@ try { Remove-Item -Path ($exe + ':Zone.Identifier') -Force -ErrorAction Silently
 try {
     $wsh = New-Object -ComObject WScript.Shell
     $desk = [Environment]::GetFolderPath('Desktop')
-    $lnk = $wsh.CreateShortcut((Join-Path $desk 'MongolRanger.lnk'))
+    $lnk = $wsh.CreateShortcut((Join-Path $desk 'ZevArena.lnk'))
     $lnk.TargetPath = $exe
     $lnk.WorkingDirectory = $dir
-    $lnk.Description = 'MongolRanger — Warcraft III 1.26a Online Platform'
+    $lnk.Description = 'ZevArena — Warcraft III 1.26a Online Platform'
     $lnk.IconLocation = "$exe,0"
     $lnk.Save()
 } catch {}

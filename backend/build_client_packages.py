@@ -105,13 +105,13 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
-[assembly: AssemblyTitle("MongolRanger Client")]
-[assembly: AssemblyDescription("MongolRanger — Warcraft III LAN, Reconnect & WarKey Client")]
+[assembly: AssemblyTitle("ZevArena Client")]
+[assembly: AssemblyDescription("ZevArena — Warcraft III LAN, Reconnect & WarKey Client")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyCompany("MongolRanger Platform")]
-[assembly: AssemblyProduct("MongolRanger")]
-[assembly: AssemblyCopyright("Copyright © 2026 MongolRanger. All rights reserved.")]
-[assembly: AssemblyTrademark("MongolRanger")]
+[assembly: AssemblyCompany("ZevArena Platform")]
+[assembly: AssemblyProduct("ZevArena")]
+[assembly: AssemblyCopyright("Copyright © 2026 ZevArena (zevarena.com). All rights reserved.")]
+[assembly: AssemblyTrademark("ZevArena")]
 [assembly: AssemblyVersion("4.8.0.0")]
 [assembly: AssemblyFileVersion("4.8.0.0")]
 [assembly: ComVisible(false)]
@@ -371,7 +371,7 @@ namespace MongolRanger
         private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
         private static readonly UIntPtr MR_EXTRA_INFO = new UIntPtr(0xAE615);
 
-        private const string SERVER_URL = "https://mongolranger.com";
+        private const string SERVER_URL = "https://zevarena.com";
         private const string FALLBACK_SERVER_URL = "http://103.153.141.135";
         private static string activeServerUrl = SERVER_URL;
         private const string W3GS_HOST = "103.153.141.135";
@@ -689,7 +689,7 @@ namespace MongolRanger
         private const string XAML_UI = @"
 <Window xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
         xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-        Title='MongolRanger' Width='1180' Height='820' MinWidth='1024' MinHeight='740'
+        Title='ZevArena' Width='1180' Height='820' MinWidth='1024' MinHeight='740'
         WindowStartupLocation='CenterScreen' WindowStyle='None' AllowsTransparency='True'
         Background='Transparent' ResizeMode='CanResizeWithGrip' FontFamily='Segoe UI'>
   <Border CornerRadius='12' Background='#0A0E1C' BorderBrush='#252F4C' BorderThickness='1'>
@@ -706,7 +706,7 @@ namespace MongolRanger
             <Border Width='26' Height='26' CornerRadius='6' Margin='0,0,9,0' ClipToBounds='True' Background='#151B30'>
               <Image Name='ImgLogo' Width='26' Height='26' Stretch='UniformToFill' RenderOptions.BitmapScalingMode='HighQuality'/>
             </Border>
-            <TextBlock Text='MongolRanger' Foreground='#FFFFFF' FontWeight='ExtraBold' FontSize='14.5' VerticalAlignment='Center'/>
+            <TextBlock Text='ZevArena' Foreground='#FFFFFF' FontWeight='ExtraBold' FontSize='14.5' VerticalAlignment='Center'/>
             <Border Background='#0C2621' BorderBrush='#10B981' BorderThickness='1' CornerRadius='6' Padding='10,3' Margin='12,0,0,0' VerticalAlignment='Center'>
               <StackPanel Orientation='Horizontal' VerticalAlignment='Center'>
                 <Ellipse Width='7' Height='7' Fill='#10B981' VerticalAlignment='Center' Margin='0,0,6,0'/>
@@ -769,9 +769,9 @@ namespace MongolRanger
               </Border>
 
               <StackPanel Orientation='Horizontal' HorizontalAlignment='Center' Margin='0,0,0,4'>
-                <TextBlock Text='MongolRanger' Foreground='White' FontSize='22' FontWeight='ExtraBold'/>
+                <TextBlock Text='ZevArena' Foreground='White' FontSize='22' FontWeight='ExtraBold'/>
               </StackPanel>
-              <TextBlock Text='Warcraft III 1.26a Online Gaming Platform' Foreground='#94A3B8' FontSize='12.5' HorizontalAlignment='Center' Margin='0,0,0,22'/>
+              <TextBlock Text='Warcraft III 1.26a Esport Platform (zevarena.com)' Foreground='#94A3B8' FontSize='12.5' HorizontalAlignment='Center' Margin='0,0,0,22'/>
 
               <!-- Segmented Pill Toggle: Sign In / Sign Up -->
               <Border Background='#0B0F1A' CornerRadius='12' Padding='4' BorderBrush='#1E293B' BorderThickness='1' Margin='0,0,0,20'>
@@ -2264,7 +2264,7 @@ namespace MongolRanger
                     </Border>
 
                     <Border Background='#0B0F1A' CornerRadius='8' Padding='12,9' Margin='0,0,0,8' BorderBrush='#1E293B' BorderThickness='1'>
-                      <TextBlock Name='LblStep2' Text='⏳ 2. MongolRanger Reconnect &amp; View Patch (Game.dll) автоматаар суулгах...' Foreground='#CBD5E1' FontSize='12.5' FontWeight='SemiBold'/>
+                      <TextBlock Name='LblStep2' Text='⏳ 2. ZevArena Reconnect &amp; View Patch (Game.dll) автоматаар суулгах...' Foreground='#CBD5E1' FontSize='12.5' FontWeight='SemiBold'/>
                     </Border>
 
                     <Border Background='#0B0F1A' CornerRadius='8' Padding='12,9' Margin='0,0,0,8' BorderBrush='#1E293B' BorderThickness='1'>
@@ -2410,7 +2410,7 @@ namespace MongolRanger
             <StackPanel>
               <StackPanel Orientation='Horizontal' Margin='0,0,0,10'>
                 <Border Background='#0C2D48' BorderBrush='#38BDF8' BorderThickness='1' CornerRadius='99' Padding='10,3'>
-                  <TextBlock Text='⚡ MONGOLRANGER STEAM AUTO-UPDATER' Foreground='#38BDF8' FontSize='10.5' FontWeight='ExtraBold'/>
+                  <TextBlock Text='⚡ ZEV ARENA AUTO-UPDATER' Foreground='#38BDF8' FontSize='10.5' FontWeight='ExtraBold'/>
                 </Border>
               </StackPanel>
               <TextBlock Name='LblUpdateTitle' Text='🔄 Шинэчлэлт олдлоо — Автоматаар суулгаж байна...' Foreground='White' FontSize='18' FontWeight='ExtraBold' TextWrapping='Wrap' Margin='0,0,0,6'/>
@@ -2511,7 +2511,12 @@ namespace MongolRanger
                 string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
                 if (!string.IsNullOrEmpty(desktopDir) && Directory.Exists(desktopDir))
                 {
-                    string desktopExe = Path.Combine(desktopDir, "MongolRanger.exe");
+                    string oldDesktopExe = Path.Combine(desktopDir, "MongolRanger.exe");
+                    if (File.Exists(oldDesktopExe) && !string.Equals(Path.GetFullPath(payloadPath), Path.GetFullPath(oldDesktopExe), StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { File.Delete(oldDesktopExe); } catch { }
+                    }
+                    string desktopExe = Path.Combine(desktopDir, "ZevArena.exe");
                     if (!string.Equals(Path.GetFullPath(payloadPath), Path.GetFullPath(desktopExe), StringComparison.OrdinalIgnoreCase))
                     {
                         try { File.WriteAllBytes(desktopExe, payloadBytes); } catch { }
@@ -5653,8 +5658,13 @@ namespace MongolRanger
                         string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
                         if (!string.IsNullOrEmpty(desktopDir) && Directory.Exists(desktopDir))
                         {
-                            string desktopExe = Path.Combine(desktopDir, "MongolRanger.exe");
-                            if (File.Exists(desktopExe) && !string.Equals(Path.GetFullPath(myExe), Path.GetFullPath(desktopExe), StringComparison.OrdinalIgnoreCase))
+                            string oldDesktopExe = Path.Combine(desktopDir, "MongolRanger.exe");
+                            if (File.Exists(oldDesktopExe) && !string.Equals(Path.GetFullPath(myExe), Path.GetFullPath(oldDesktopExe), StringComparison.OrdinalIgnoreCase))
+                            {
+                                try { File.Delete(oldDesktopExe); } catch { }
+                            }
+                            string desktopExe = Path.Combine(desktopDir, "ZevArena.exe");
+                            if (!string.Equals(Path.GetFullPath(myExe), Path.GetFullPath(desktopExe), StringComparison.OrdinalIgnoreCase))
                             {
                                 try { File.Copy(myExe, desktopExe, true); } catch { }
                             }
@@ -8482,6 +8492,7 @@ def compile_standalone_exe(out_exe: Path) -> bool:
 def build_packages(out_dir: Path, overwrite: bool = True) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     win_exe = out_dir / "MongolRanger-Setup.exe"
+    zev_exe = out_dir / "ZevArena-Setup.exe"
     nsis_exe = out_dir / "MongolRanger_4.8_x64-setup.exe"
     win_zip = out_dir / "MongolRanger.zip"
     mac_zip = out_dir / "MongolRanger-macOS-Universal.zip"
@@ -8500,25 +8511,31 @@ def build_packages(out_dir: Path, overwrite: bool = True) -> dict[str, Path]:
         makensis_bin = next((p for p in makensis_candidates if p.is_file()), None)
         if makensis_bin is not None:
             subprocess.run([str(makensis_bin), str(nsi_script.name)], cwd=str(out_dir), check=False)
+            if zev_exe.is_file():
+                import shutil
+                shutil.copy2(zev_exe, nsis_exe)
+        elif win_exe.is_file() and not zev_exe.is_file():
+            import shutil
+            shutil.copy2(win_exe, zev_exe)
 
     if overwrite or not win_zip.is_file():
         readme_mn = '''====================================================================
-  MongolRanger v4.8 — Warcraft III 1.26a Online Gaming Platform
+  ZevArena v4.8 — Warcraft III 1.26a Online Gaming Platform
   (Windows 7 / 8 / 8.1 / 10 / 11 • 32-bit ба 64-bit)
 ====================================================================
 
 [СУУЛГАХ ЗААВАР]:
-1. Энэ хавтас доторх "MongolRanger-Installer.exe" дээр 2 дарж шууд суулгана!
+1. Энэ хавтас доторх "ZevArena-Setup.exe" дээр 2 дарж шууд суулгана!
 2. Суулгагч нь таны компьютер дээрх .NET Framework болон TLS тохиргоог
-   автоматаар шалгаж засаад, Desktop дээр "MongolRanger" дүрс үүсгэн
+   автоматаар шалгаж засаад, Desktop дээр "ZevArena" дүрс үүсгэн
    програмыг шууд нээнэ.
 ====================================================================
 '''
-        use_nsis = nsis_exe.is_file() and (not win_exe.is_file() or nsis_exe.stat().st_mtime >= win_exe.stat().st_mtime)
-        installer_payload = nsis_exe if use_nsis else win_exe
+        use_nsis = zev_exe.is_file() and (not win_exe.is_file() or zev_exe.stat().st_mtime >= win_exe.stat().st_mtime)
+        installer_payload = zev_exe if use_nsis else win_exe
         with zipfile.ZipFile(win_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             if installer_payload.is_file():
-                zf.write(installer_payload, "MongolRanger-Installer.exe")
+                zf.write(installer_payload, "ZevArena-Setup.exe")
                 zf.writestr("ЗААВАР (Уншина уу).txt", readme_mn)
 
     if overwrite or not mac_zip.is_file():
@@ -8531,9 +8548,9 @@ def build_packages(out_dir: Path, overwrite: bool = True) -> dict[str, Path]:
     if overwrite or not game_zip.is_file():
         with zipfile.ZipFile(game_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             if win_exe.is_file():
-                zf.write(win_exe, "MongolRanger.exe")
+                zf.write(win_exe, "ZevArena.exe")
 
-    return {"win": win_exe, "win_zip": win_zip, "mac": mac_zip, "game": game_zip}
+    return {"win": win_exe, "zev_setup": zev_exe, "win_zip": win_zip, "mac": mac_zip, "game": game_zip}
 
 
 if __name__ == "__main__":

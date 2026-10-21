@@ -181,7 +181,13 @@ def ensure_bucket_cors() -> bool:
                 "https://socialpaywall-cms.web.app",
                 "http://localhost:3000",
             ]
-        needed = ["https://mongolranger.com", "https://www.mongolranger.com", "http://localhost:8050"]
+        needed = [
+            "https://zevarena.com",
+            "https://www.zevarena.com",
+            "https://mongolranger.com",
+            "https://www.mongolranger.com",
+            "http://localhost:8050",
+        ]
         changed = False
         for o in needed:
             if o not in origins:

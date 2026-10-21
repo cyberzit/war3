@@ -1,12 +1,12 @@
 Unicode true
 SetCompressor /SOLID lzma
 
-!define PRODUCT_NAME "MongolRanger"
+!define PRODUCT_NAME "ZevArena"
 !define PRODUCT_VERSION "4.8.0.0"
-!define PRODUCT_PUBLISHER "MongolRanger Platform"
+!define PRODUCT_PUBLISHER "ZevArena Platform"
 
 Name "${PRODUCT_NAME} v4.8"
-OutFile "MongolRanger_4.8_x64-setup.exe"
+OutFile "ZevArena-Setup.exe"
 InstallDir "$LOCALAPPDATA\MongolRanger"
 RequestExecutionLevel highest
 SilentInstall silent
@@ -14,12 +14,12 @@ CRCCheck on
 XPStyle on
 
 VIProductVersion "4.8.0.0"
-VIAddVersionKey "ProductName" "MongolRanger"
-VIAddVersionKey "CompanyName" "MongolRanger Platform"
-VIAddVersionKey "FileDescription" "MongolRanger Official Installer (Windows 7/8/10/11)"
+VIAddVersionKey "ProductName" "ZevArena"
+VIAddVersionKey "CompanyName" "ZevArena Platform"
+VIAddVersionKey "FileDescription" "ZevArena Official Installer (Windows 7/8/10/11)"
 VIAddVersionKey "FileVersion" "4.8.0.0"
 VIAddVersionKey "ProductVersion" "4.8.0.0"
-VIAddVersionKey "LegalCopyright" "MongolRanger"
+VIAddVersionKey "LegalCopyright" "ZevArena (zevarena.com)"
 
 Section "Install"
   ; 1. Automatically repair .NET Framework InstallRoot, Policy & TLS 1.2 StrongCrypto registry keys (32-bit WOW64 & 64-bit native)
@@ -51,32 +51,35 @@ Section "Install"
   WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" "DisabledByDefault" 0x00000000
   WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" "Enabled" 0x00000001
 
-  ; 2. Install AnyCPU MongolRanger.exe and config
+  ; 2. Install AnyCPU ZevArena client and config
   nsExec::Exec 'taskkill /F /IM MongolRanger.exe'
+  nsExec::Exec 'taskkill /F /IM ZevArena.exe'
   Sleep 250
   SetOutPath "$INSTDIR"
   File "/oname=MongolRanger.exe" "MongolRanger-Setup.exe"
   File "MongolRanger.exe.config"
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  CreateShortCut "$DESKTOP\MongolRanger.lnk" "$INSTDIR\MongolRanger.exe" "" "$INSTDIR\MongolRanger.exe" 0
-  CreateDirectory "$SMPROGRAMS\MongolRanger"
-  CreateShortCut "$SMPROGRAMS\MongolRanger\MongolRanger.lnk" "$INSTDIR\MongolRanger.exe" "" "$INSTDIR\MongolRanger.exe" 0
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger" "DisplayName" "MongolRanger"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger" "DisplayIcon" "$INSTDIR\MongolRanger.exe"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger" "Publisher" "MongolRanger Platform"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger" "DisplayVersion" "4.8.0"
+  Delete "$DESKTOP\MongolRanger.lnk"
+  CreateShortCut "$DESKTOP\ZevArena.lnk" "$INSTDIR\MongolRanger.exe" "" "$INSTDIR\MongolRanger.exe" 0
+  CreateDirectory "$SMPROGRAMS\ZevArena"
+  CreateShortCut "$SMPROGRAMS\ZevArena\ZevArena.lnk" "$INSTDIR\MongolRanger.exe" "" "$INSTDIR\MongolRanger.exe" 0
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena" "DisplayName" "ZevArena"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena" "UninstallString" '"$INSTDIR\uninstall.exe"'
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena" "DisplayIcon" "$INSTDIR\MongolRanger.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena" "Publisher" "ZevArena Platform"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena" "DisplayVersion" "4.8.0"
   Exec '"$INSTDIR\MongolRanger.exe"'
 SectionEnd
 
 Section "Uninstall"
   nsExec::Exec 'taskkill /F /IM MongolRanger.exe'
+  Delete "$DESKTOP\ZevArena.lnk"
   Delete "$DESKTOP\MongolRanger.lnk"
-  Delete "$SMPROGRAMS\MongolRanger\MongolRanger.lnk"
-  RMDir "$SMPROGRAMS\MongolRanger"
+  Delete "$SMPROGRAMS\ZevArena\ZevArena.lnk"
+  RMDir "$SMPROGRAMS\ZevArena"
   Delete "$INSTDIR\MongolRanger.exe"
   Delete "$INSTDIR\MongolRanger.exe.config"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\MongolRanger"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZevArena"
 SectionEnd

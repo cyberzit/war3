@@ -1,12 +1,12 @@
-"""Modern 2026 AAA Esports Dark Glassmorphic Landing Page for MongolRanger (https://mongolranger.com)."""
+"""Modern 2026 AAA Esports Dark Glassmorphic Landing Page for ZevArena (https://zevarena.com)."""
 
 PUBLIC_HTML = r"""<!DOCTYPE html>
 <html lang="mn" class="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MongolRanger — Warcraft III &amp; DotA Online Gaming Platform</title>
-<meta name="description" content="Монголын Warcraft III 1.26a болон DotA Allstars / LoD онлайн тоглоомын шинэ үеийн платформ. Албан ёсны суулгагч (Installer), 5-15ms Ping, 3 минутын Crash Reconnect, Anti-MapHack, ELO чансааны систем, WarKey.">
+<title>ZevArena — Warcraft III &amp; DotA Online Gaming Platform</title>
+<meta name="description" content="ZevArena (zevarena.com) — Монголын Warcraft III 1.26a болон DotA Allstars / LoD онлайн тоглоомын шинэ үеийн платформ. Шууд суудаг .EXE суулгагч, 5-15ms Ping, 3 минутын Crash Reconnect, Anti-MapHack, ELO чансааны систем, WarKey.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -977,10 +977,10 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
   <header class="navbar">
     <a href="#" class="brand">
       <div class="brand-logo">
-        <svg viewBox="0 0 24 24"><path d="M4 4h4l4 7 4-7h4v16h-3.5V10.5L12 18l-4.5-7.5V20H4V4z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M5 4h14v3.2L10.2 17H19v3H5v-3.2L13.8 7H5V4z"/></svg>
       </div>
       <div class="brand-name brand-font">
-        MongolRanger
+        ZevArena
       </div>
     </a>
 
@@ -1000,7 +1000,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
       </div>
       <a id="navQuickDl" href="/api/downloads/client_win/file" class="btn-nav-dl">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>Суулгагч Татах</span>
+        <span>Суулгагч Татах (.EXE)</span>
       </a>
     </div>
   </header>
@@ -1011,17 +1011,17 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
   <section class="hero">
     <div>
       <div class="release-pill">
-        <span class="tag">v4.8 ESPORT</span>
+        <span class="tag">ZEV ARENA v4.8</span>
         <span>Шинэ ELO Чансаа • 3 мин Reconnect • Anti-MapHack • Ухаалаг WarKey</span>
       </div>
 
       <h1>
         Warcraft III &amp; DotA<br>
-        <span class="grad-text">Монголын Esport Платформ</span>
+        <span class="grad-text">ZevArena Esport Платформ</span>
       </h1>
 
       <p class="hero-lead">
-        Нэг товчоор суудаг албан ёсны <strong>Installer</strong> суулгагчаа татаад шууд нэвтэрч тоглоорой.
+        ZIP задлах шаардлагагүй, шууд дараад суудаг албан ёсны <strong>ZevArena-Setup.exe</strong> суулгагчаа татаад шууд нэвтэрч тоглоорой.
         Дотоодын <strong>5–15ms Ping</strong>, <strong>3 минутын Crash Reconnect &amp; Rejoin</strong>, <strong>3 давхар Anti-MapHack</strong>, <strong>5v5 ELO Чансаа</strong> болон <strong>WarKey</strong> бүгд нэг дор бүрэн суурилагдсан.
       </p>
 
@@ -1029,8 +1029,8 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
         <a id="heroWinBtn" href="/api/downloads/client_win/file" class="btn-hero-exe">
           <svg viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
           <div class="btn-text-col">
-            <span class="main-lbl" id="heroWinText">Програм Татах (Installer)</span>
-            <span class="sub-lbl">Windows 7 / 8 / 10 / 11 • Автомат суулгагч</span>
+            <span class="main-lbl" id="heroWinText">Суулгагч Татах (.EXE)</span>
+            <span class="sub-lbl">Windows 7 / 8 / 10 / 11 • Шууд ажилладаг .EXE</span>
           </div>
         </a>
 
@@ -1064,10 +1064,10 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
     <div class="client-mockup-wrap">
       <div class="client-glow-backdrop"></div>
       <div class="client-window">
-        <img src="/assets/mongolranger_v48_ui_preview.png" alt="MongolRanger v4.8 Esport Client Interface" class="client-screenshot-img">
+        <img src="/assets/mongolranger_v48_ui_preview.png" alt="ZevArena v4.8 Esport Client Interface" class="client-screenshot-img">
         <div class="client-caption-bar">
-          <span>✨ <strong>MongolRanger v4.8</strong> — 5 үндсэн газрын сан, Топ 100 ELO, Найзууд &amp; Чат, WarKey, Автомат War3 Patch</span>
-          <a href="#downloads" style="color:#34d399;font-weight:800">Суулгагч татах →</a>
+          <span>✨ <strong>ZevArena v4.8</strong> — 5 үндсэн газрын сан, Топ 100 ELO, Найзууд &amp; Чат, WarKey, Автомат War3 Patch</span>
+          <a href="#downloads" style="color:#34d399;font-weight:800">Суулгагч татах (.EXE) →</a>
         </div>
       </div>
     </div>
@@ -1079,7 +1079,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
       <div>
         <div class="sec-eyebrow">Official Downloads</div>
         <h2 class="sec-title">Тоглоомын Програм &amp; Бүрэн Багц Татах</h2>
-        <p class="sec-desc">Windows 7 / 8 / 8.1 / 10 / 11 (32-bit ба 64-bit) бүх хувилбар дээр шууд сууж ажиллах албан ёсны суулгагч болон Warcraft III 1.26a бүрэн багц.</p>
+        <p class="sec-desc">Windows 7 / 8 / 8.1 / 10 / 11 (32-bit ба 64-bit) бүх хувилбар дээр ZIP задлах шаардлагагүй шууд сууж ажиллах албан ёсны <strong>.EXE суулгагч</strong> болон Warcraft III 1.26a бүрэн багц.</p>
       </div>
     </div>
 
@@ -1090,19 +1090,19 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
             <div class="dl-os-icon">
               <svg viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
             </div>
-            <span class="dl-ver-badge">v4.8 Installer</span>
+            <span class="dl-ver-badge">v4.8 .EXE Installer</span>
           </div>
-          <h3>MongolRanger Тоглоомын Програм (Windows)</h3>
+          <h3>ZevArena Тоглоомын Програм (Windows .EXE)</h3>
           <div class="dl-platform">Windows 7 / 8 / 8.1 / 10 / 11 (32-bit &amp; 64-bit — Бүх хувилбарт ажиллана)</div>
-          <p class="dl-desc">Windows-ийн бүх хувилбар дээр шууд сууж Desktop дээр дүрсээ үүсгээд нээгддэг албан ёсны суулгагч. 3 минутын Reconnect, Anti-MapHack, WarKey болон ELO чансаа багтсан.</p>
+          <p class="dl-desc">ZIP задлах шаардлагагүй! Татаад 2 дармагц Windows-ийн бүх хувилбар дээр шууд сууж, Desktop дээр ZevArena дүрс үүсгээд автоматаар нээгдэнэ.</p>
           <ul class="dl-check-list">
-            <li>Windows 7, 8, 8.1, 10, 11 (32-bit &amp; 64-bit) бүрэн дэмжинэ</li>
+            <li>Шууд ажилладаг .EXE суулгагч (Windows 7, 8, 8.1, 10, 11)</li>
             <li>Warcraft III хавтсыг өөрөө олж Reconnect Patch суулгана</li>
             <li>Суурилагдсан WarKey + 3 минутын Crash Reconnect</li>
           </ul>
         </div>
         <a href="/api/downloads/client_win/file" class="btn-dl-action primary">
-          ⬇️ Програм Татах (Installer)
+          ⬇️ Суулгагч Татах (ZevArena-Setup.exe)
         </a>
       </div>
 
@@ -1120,7 +1120,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
           <ul class="dl-check-list">
             <li>Warcraft III 1.26a бэлэн тохиргоотой үндсэн тоглоом</li>
             <li>Албан ёсны 5 үндсэн DotA Allstars &amp; LoD газрын зураг</li>
-            <li>MongolRanger програм автоматаар таньж холбоно</li>
+            <li>ZevArena програм автоматаар таньж холбоно</li>
           </ul>
         </div>
         <a href="/api/downloads/game_full/file" class="btn-dl-action secondary">
@@ -1133,8 +1133,8 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
       <div class="step-item">
         <div class="step-num">1</div>
         <div class="step-body">
-          <h4>Програм суулгах</h4>
-          <p><strong>MongolRanger</strong> суулгагчаа татаж ажиллуулна. Windows 7, 8, 10, 11 бүх хувилбар дээр Desktop дүрс үүсгэн шууд нээгдэнэ.</p>
+          <h4>Програм суулгах (.EXE)</h4>
+          <p><strong>ZevArena-Setup.exe</strong> суулгагчаа татаж 2 дарж ажиллуулна. Desktop дээр дүрс үүсгэн шууд нээгдэнэ.</p>
         </div>
       </div>
       <div class="step-item">
@@ -1159,7 +1159,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
     <div class="sec-head">
       <div>
         <div class="sec-eyebrow">Platform Advantages</div>
-        <h2 class="sec-title">MongolRanger Платформын Бүх Давуу Талууд</h2>
+        <h2 class="sec-title">ZevArena Платформын Бүх Давуу Талууд</h2>
         <p class="sec-desc">Хуучны P2P платформуудын гацалт, Fatal Error, MapHack болон Leaver-ийн асуудлыг орчин үеийн Төв Хост Серверийн технологиор 100% шийдвэрлэв.</p>
       </div>
     </div>
@@ -1171,7 +1171,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
         <h3>Монгол Төв Хост Сервер (5–15ms Ping &amp; 0% Lag)</h3>
         <p>
           Хуучны P2P платформууд дээр өрөө нээсэн (Host) хүний гэрийн интернэтээс хамаарч бусад тоглогчид гацах эсвэл нэг хүн гацахад бүх 10 тоглогч дагаж гацдаг.
-          Харин <strong>MongolRanger</strong> дээр тоглогч бүр Улаанбаатар дахь Төв Сервертэй шууд холбогддог:
+          Харин <strong>ZevArena</strong> дээр тоглогч бүр Улаанбаатар дахь Төв Сервертэй шууд холбогддог:
         </p>
         <div class="ping-bars">
           <div class="ping-bar-item">
@@ -1263,7 +1263,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
       <div>
         <div class="sec-eyebrow">Competitive Ranking Rules</div>
         <h2 class="sec-title">🏆 ELO Чансааны Систем ба Дүрэм</h2>
-        <p class="sec-desc">MongolRanger-ийн ELO чансааны систем нь зөвхөн багийн ялалтаас гадна тоглогч бүрийн хувийн ур чадвар (Kill / Death / Assist)-ийг шударгаар үнэлдэг.</p>
+        <p class="sec-desc">ZevArena-ийн ELO чансааны систем нь зөвхөн багийн ялалтаас гадна тоглогч бүрийн хувийн ур чадвар (Kill / Death / Assist)-ийг шударгаар үнэлдэг.</p>
       </div>
     </div>
 
@@ -1473,7 +1473,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
       <div>
         <div class="sec-eyebrow">Real-Time Matchmaking</div>
         <h2 class="sec-title">Одоо Идэвхтэй Байгаа Өрөөнүүд</h2>
-        <p class="sec-desc">MongolRanger програмаа нээгээд доорх өрөөнүүд рүү шууд нэгдэн тоглоорой.</p>
+        <p class="sec-desc">ZevArena програмаа нээгээд доорх өрөөнүүд рүү шууд нэгдэн тоглоорой.</p>
       </div>
     </div>
 
@@ -1499,7 +1499,7 @@ PUBLIC_HTML = r"""<!DOCTYPE html>
 
 <footer>
   <div class="container footer-flex">
-    <div>© 2026 <strong>MongolRanger</strong> — Монголын Warcraft III &amp; DotA Esport Платформ</div>
+    <div>© 2026 <strong>ZevArena</strong> (zevarena.com) — Монголын Warcraft III &amp; DotA Esport Платформ</div>
     <div style="display:flex;gap:18px;flex-wrap:wrap">
       <a href="#downloads">Програм Татах</a>
       <a href="#advantages">Давуу Талууд</a>
@@ -1520,9 +1520,7 @@ function esc(s) {
 function cleanLabel(s) {
   if (!s) return '';
   return String(s)
-    .replace(/\s*\([^)]*\.exe[^)]*\)/gi, ' (Installer)')
-    .replace(/\bMongolRanger[-_A-Za-z0-9.]*\.exe\b/gi, 'Суулгагч (Installer)')
-    .replace(/\.exe\b/gi, '')
+    .replace(/\bMongolRanger\b/gi, 'ZevArena')
     .replace(/\.zip\b/gi, '');
 }
 
@@ -1533,14 +1531,14 @@ const OS_SVG = {
 
 const SLOT_BULLETS = {
   client_win: [
-    'Windows 7, 8, 8.1, 10, 11 (32-bit & 64-bit) бүрэн дэмжинэ',
+    'Шууд ажилладаг .EXE суулгагч (Windows 7, 8, 8.1, 10, 11)',
     'Warcraft III хавтсыг өөрөө олж Reconnect Patch суулгана',
     '3 минутын Crash Reconnect + Anti-MapHack + WarKey'
   ],
   game_full: [
     'Суулгах шаардлагагүй Warcraft III 1.26a бүрэн тоглоом',
     'Албан ёсны 5 үндсэн DotA Allstars & LoD газрын зургууд',
-    'MongolRanger програм автоматаар таньж ажиллана'
+    'ZevArena програм автоматаар таньж ажиллана'
   ]
 };
 
@@ -1558,15 +1556,17 @@ async function loadOverview() {
       grid.innerHTML = visibleDls.map(d => {
         const isWin = d.slot === 'client_win';
         const href = isWin ? '/api/downloads/client_win/file' : (d.download_url || ('/api/downloads/' + d.slot + '/file'));
-        const btnText = isWin ? 'Програм Татах (Installer)' : 'Warcraft III 1.26a Татах';
-        const cleanTitle = isWin ? 'MongolRanger Тоглоомын Програм (Windows)' : cleanLabel(d.title);
+        const btnText = isWin ? 'Суулгагч Татах (ZevArena-Setup.exe)' : 'Warcraft III 1.26a Татах';
+        const cleanTitle = isWin ? 'ZevArena Тоглоомын Програм (Windows .EXE)' : cleanLabel(d.title);
         const cleanPlatform = isWin ? 'Windows 7 / 8 / 8.1 / 10 / 11 (32-bit & 64-bit — Бүх хувилбарт ажиллана)' : cleanLabel(d.platform);
-        const cleanVer = isWin ? 'v4.8 Installer' : cleanLabel(d.version || 'v4.8');
-        const cleanDesc = cleanLabel(d.description);
+        const cleanVer = isWin ? 'v4.8 .EXE Installer' : cleanLabel(d.version || 'v4.8');
+        const cleanDesc = isWin
+          ? 'ZIP задлах шаардлагагүй! Татаад 2 дармагц Windows-ийн бүх хувилбар дээр шууд сууж, Desktop дээр ZevArena дүрс үүсгээд автоматаар нээгдэнэ.'
+          : cleanLabel(d.description);
         if (isWin) {
           document.getElementById('heroWinBtn').href = href;
           document.getElementById('navQuickDl').href = href;
-          document.getElementById('heroWinText').textContent = btnText;
+          document.getElementById('heroWinText').textContent = 'Суулгагч Татах (.EXE)';
         }
         if (d.slot === 'game_full') {
           document.getElementById('heroGameBtn').href = href;
@@ -1636,7 +1636,7 @@ async function loadOverview() {
       rBody.innerHTML = `
         <tr>
           <td colspan="4" class="lobby-empty">
-            Одоогоор нээлттэй өрөө алга байна. <strong>MongolRanger</strong> програмаа нээгээд анхны өрөөг үүсгээрэй!
+            Одоогоор нээлттэй өрөө алга байна. <strong>ZevArena</strong> програмаа нээгээд анхны өрөөг үүсгээрэй!
           </td>
         </tr>
       `;

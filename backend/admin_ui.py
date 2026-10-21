@@ -1,11 +1,11 @@
-"""Single-page Mongolian Web Admin Dashboard for MongolRanger (/admin)."""
+"""Single-page Mongolian Web Admin Dashboard for ZevArena (/admin)."""
 
 ADMIN_HTML = """<!DOCTYPE html>
 <html lang="mn">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MongolRanger Admin — Сервер Удирдлагын Самбар</title>
+<title>ZevArena Admin — Сервер Удирдлагын Самбар</title>
 <style>
 :root {
   --bg: #0b0f17;
@@ -226,9 +226,9 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
         <path d="M32 4L56 14V32C56 47 45 57 32 61C19 57 8 47 8 32V14L32 4Z" fill="url(#ag)" stroke="#f59e0b" stroke-width="2.5"/>
         <path d="M18 42V22L26 32L32 23L38 32L46 22V42H41V31L35 38H29L23 31V42H18Z" fill="#fff"/>
       </svg>
-      <span>MongolRanger Admin</span>
+      <span>ZevArena Admin</span>
     </a>
-    <span class="brand-badge" id="srvVersion">v0.4.0 • W3GS 8051</span>
+    <span class="brand-badge" id="srvVersion">v4.8 • W3GS 8051</span>
   </div>
   <div id="topActions" class="hidden" style="display:flex;gap:8px;align-items:center;">
     <a class="btn btn-sm" href="/" target="_blank" style="background:var(--panel2);color:var(--text);border:1px solid var(--border);text-decoration:none;">🌐 Вэбсайт харах</a>
@@ -240,7 +240,7 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 <!-- LOGIN VIEW -->
 <div id="loginView" class="login-box">
   <h2>Админ Нэвтрэх</h2>
-  <p>MongolRanger серверийн Татах файлууд, Газрын зураг (Map), Өрөө болон Тоглогчдын удирдлага</p>
+  <p>ZevArena серверийн Татах файлууд, Газрын зураг (Map), Өрөө болон Тоглогчдын удирдлага</p>
   <div id="loginAlert" class="alert alert-err"></div>
   <form onsubmit="doAdminLogin(event)">
     <div class="field">
@@ -293,9 +293,9 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
   <!-- TAB 0: DOWNLOADS MANAGER -->
   <div id="tab-downloads">
     <div class="card">
-      <h3>📥 Нүүр Хуудасны Татах Товчнуудын Удирдлага (mongolranger.com)</h3>
+      <h3>📥 Нүүр Хуудасны Татах Товчнуудын Удирдлага (zevarena.com)</h3>
       <div class="sub">
-        Та эндээс <b>MongolRanger Client (Windows x86/x64)</b>, <b>macOS Client</b> болон <b>Warcraft III 1.26a + DotA Багц</b>-ийн
+        Та эндээс <b>ZevArena Client (Windows .EXE)</b> болон <b>Warcraft III 1.26a + DotA Багц</b>-ийн
         файлыг сервер рүү шууд <b>Upload</b> хийх эсвэл <b>Гадны татах линк (Google Drive, Mega, MediaFire, Direct CDN)</b> холбох боломжтой.
         Хадгалмагц нүүр хуудасны татах товчнууд автоматаар шинэчлэгдэнэ!
       </div>
@@ -344,7 +344,7 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 
     <div class="card">
       <h3>📦 Сервер дээрх Албан ёсны Map-ууд (HTTPS Хурдан Татах Сан)</h3>
-      <div class="sub">Тоглогчийн MongolRanger програм тоглоом эхлэхээс өмнө эндээс map-аа 2 секундэд автоматаар татаж авна.</div>
+      <div class="sub">Тоглогчийн ZevArena програм тоглоом эхлэхээс өмнө эндээс map-аа 2 секундэд автоматаар татаж авна.</div>
       <table>
         <thead>
           <tr>
@@ -405,7 +405,7 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
   <div id="tab-settings" class="hidden">
     <div class="card" style="max-width:520px;">
       <h3>🔑 Админ Нууц Үг Солих</h3>
-      <div class="sub">mongolranger.com/admin удирдлагын самбарын нэвтрэх нууц үгийг шинэчлэх</div>
+      <div class="sub">zevarena.com/admin удирдлагын самбарын нэвтрэх нууц үгийг шинэчлэх</div>
       <form onsubmit="changeAdminPassword(event)">
         <div class="field">
           <label>Шинэ нууц үг (хамгийн багадаа 8 тэмдэгт)</label>
