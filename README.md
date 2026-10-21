@@ -1,6 +1,25 @@
-# Warcraft III reconnect host service
+# MongolRanger — Warcraft III 1.26a Open Source Reconnect Host Service & LAN Lobby Client
 
-Status: **local feasibility prototype, not a production client**.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Platform: Windows 7/8/10/11](https://img.shields.io/badge/Platform-Windows%207%20%7C%208%20%7C%2010%20%7C%2011-blue.svg)](https://github.com/cyberzit/war3)
+
+**MongolRanger (`war3`)** is a free, open-source Warcraft III: The Frozen Throne (1.26a) multiplayer hostbot, crash-reconnect engine, W3GS room relay, and universal Windows desktop launcher (`Windows 7 / 8 / 8.1 / 10 / 11`).
+
+- **Repository:** [https://github.com/cyberzit/war3](https://github.com/cyberzit/war3)
+- **Author / Maintainer:** `cyberzit` (`cyberzit@gmail.com`)
+- **License:** Open Source — [MIT License](./LICENSE)
+
+## Key Open Source Components
+- **`backend/`**: FastAPI W3GS Room Hostbot (`w3gs_room.py`), multiplayer state sync, reconnect checkpoint coordinator, and web portal (`app.py`, `public_ui.py`).
+- **`core/`**: Local UDP/TCP W3GS LAN proxy, P2P tunnel, WarKey hotkey remapper (`warkey.py`), and automatic crash recovery manager (`recovery_manager.py`).
+- **`native/` & `recovery_lab/`**: Native Warcraft III 1.26a `Game.dll` save/load state restoration and deterministic reconnect research tools.
+- **`dist_packages/installer.nsi`**: Universal NSIS installer script supporting Windows 7 SP1 through Windows 11 (x86/x64).
+
+---
+
+## Research & Architecture Notes
+
+Status: **local feasibility prototype & live W3GS reconnect host service**.
 An experimental installer has been built; it does not include working crash recovery.
 Installer work is paused at the user's request until recovery is validated.
 
