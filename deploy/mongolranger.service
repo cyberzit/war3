@@ -1,0 +1,48 @@
+[Unit]
+Description=MongolRanger isolated lobby API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=mongolranger
+Group=mongolranger
+WorkingDirectory=/opt/mongolranger/app
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=MONGOLRANGER_DB=/var/lib/mongolranger/lobby.sqlite3
+ExecStart=/opt/mongolranger/venv/bin/uvicorn backend.app:app --host 0.0.0.0 --port 8050 --workers 1 --no-proxy-headers --limit-concurrency 128 --backlog 128 --timeout-keep-alive 5 --h11-max-incomplete-event-size 16384 --ssl-keyfile /opt/mongolranger/tls/server.key --ssl-certfile /opt/mongolranger/tls/server.crt --no-access-log
+Restart=on-failure
+RestartSec=5
+StateDirectory=mongolranger
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/etc/caddy -/var/lib/caddy -/var/www -/srv -/home -/root -/run/postgresql -/opt/kora-app -/opt/chatkino-app
+MemoryHigh=1G
+MemoryMax=2G
+MemorySwapMax=0
+CPUQuota=200%
+TasksMax=128
+LimitNOFILE=256
+LimitFSIZE=134217728
+Nice=10
+IOWeight=10
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=50
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+c1822039bc460ad0953b12128af1fac1f9bb1c674e07c3815c3f97225a44f440  /opt/kora-app/diag-magicmovie.mjs
+3a44fa54b1c046d08cd60153c3df0fc1507b5d689ada940c9ba6fb3604118966  /opt/kora-app/next.config.js
+85ae5aee75f011967cf2d25cbc342f62d69314e9d925f7f4aa3456fc2cffcca6  /opt/kora-app/next-env.d.ts
+1209939cc9995623b59b40d1144306ddfdb1e003959b662f416f338037b2e6cf  /opt/kora-app/.env.local
+3c16fdcbbafc5c05d4b2bd63a2e2d5fb90b93ac27d5ca550f1987fb238c90268  /opt/kora-app/middleware.ts
+59f4f12d4c1fddfa60bc7e826a1af0f472b14e5de1c5849375107f9d2a136259  /opt/kora-app/tailwind.config.ts
+0c34339ff6ee71a34a144243add4936ea555cc522852bfc9538e9fab465e3bc5  /opt/kora-app/diag-mm2.mjs
+85414df287cd7f048e0303a40507f8019301a8805bf3c946bbb0c50c454ff80b  /opt/kora-app/ecosystem.hetzner.config.cjs
+68e650f500d8f4f92b5b4f6ef189431fd634ce6c0a7271a8d7b70181308bfcaa  /opt/kora-app/backup-db.mjs
+6a74c297fe29d2014bf88e7979f9ea03c76c8d1178fb7f0f0e5941a8651cb23e  /opt/kora-app/test-qr.mjs
+4dfc6ef7e42c440743e194fa68b960b6dfd4bcc0283a8863cf4c498d9876d20a  /opt/kora-app/socialpaywall-cms-firebase-adminsdk-fbsvc-6bd492a6e4.json
+4183c9a6d3b55e54fa5b49f0e3195fcc5bc4c885521b74aee2fdd074711fdbf5  /opt/kora-app/tsconfig.json
+d7a4ca91d5a141a66bdb27cbb776f73eb26da2cdb54ba1615921460a19b5f104  /opt/kora-app/package-lock.json
+408e73b6406a0f75400bdcd6e06663eae3b851de2dfcb919579c785e627f6561  /opt/kora-app/diag-google-dep.mjs
+fa650b380adfabb151a0b352f7135e107e6352345f899060f1c5c231228f94bf  /opt/kora-app/postcss.config.js
+92dd98bd2644077d0dcb10d07ab5ccf71e3ff85ddb051e0b654483635a13319f  /opt/kora-app/package.json
+4dfc6ef7e42c440743e194fa68b960b6dfd4bcc0283a8863cf4c498d9876d20a  /opt/kora-app/service-account.json
+ed8d29e7e692f84a2c4b3fef3c5325ab9fd31750534df957f940157c446ff249  /opt/chatkino-app/test-q.mjs
+894af16f707495259c94706786a699cb135d321fbc6bf72dd16b5c0e023a2e63  /opt/chatkino-app/diag-stuck.mjs
+3a44fa54b1c046d08cd60153c3df0fc1507b5d689ada940c9ba6fb3604118966  /opt/chatkino-app/next.config.js
+b6de8f6cab73cdcab12dcb64a866868b4335a6233e39a65f8fbf2ad7d3b6540b  /opt/chatkino-app/diag-access.mjs
+85ae5aee75f011967cf2d25cbc342f62d69314e9d925f7f4aa3456fc2cffcca6  /opt/chatkino-app/next-env.d.ts
+17a22acc5dd24fe87875290901366001a4d6795b8b93ef055de1bdd7ef220771  /opt/chatkino-app/.env.local
+4212ccf0e7d708676df05b60bbbddf809866183645d3338451d9fd48c4f159a6  /opt/chatkino-app/middleware.ts
+59f4f12d4c1fddfa60bc7e826a1af0f472b14e5de1c5849375107f9d2a136259  /opt/chatkino-app/tailwind.config.ts
+4183c9a6d3b55e54fa5b49f0e3195fcc5bc4c885521b74aee2fdd074711fdbf5  /opt/chatkino-app/tsconfig.json
+f3b4dd4da635b33b5fc259e5609793a258e5b794272fcb7c9683548d080c6702  /opt/chatkino-app/find-muugii.mjs
+f7a6147efa3c7166a6fd3cb4aa9fbded2242d98df6691e90a23ab9b801d55189  /opt/chatkino-app/package-lock.json
+fa650b380adfabb151a0b352f7135e107e6352345f899060f1c5c231228f94bf  /opt/chatkino-app/postcss.config.js
+bef48c6b42259481c26278a5497ccf373b9a59159d14f27e86cf597b4354efce  /opt/chatkino-app/diag-ocr-dalai.mjs
+62d414367215441c92215f5cf04392100de3b0119eaa723f6193897b52cae18d  /opt/chatkino-app/extend-movie.mjs
+be46260d16cafd27fc1bb8af2cd2d60b598c4f29328d9b728c29aad18e7fd597  /opt/chatkino-app/ecosystem.chatkino.config.cjs
+d902295012b5791bec0b9ca1ee0f285c4225fd5ac74e77b49b4f0ee29a544f71  /opt/chatkino-app/check-dalai-tx.mjs
+1759881eb8ff631cc5f78da2c19a0fefe0f25e5e24f252ebc36a728413f74954  /opt/chatkino-app/package.json
+3c021fc6d00492ae4618e2c8d8b2845acd9c4cd1bc5c74b1f0a5d8d4242ea9b8  /opt/chatkino-app/service-account.json
+d4218909f8dfb626a4e9109abc91d866345116fc3ec817ffed5fa1a3285b4612  /etc/caddy/Caddyfile
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                                   
+LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=2760977,fd=15))            
+LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("sshd",pid=2771987,fd=3),("systemd",pid=1,fd=94))
+LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=2760977,fd=17))            
+LISTEN 0      200        127.0.0.1:5432      0.0.0.0:*    users:(("postgres",pid=2765661,fd=6))                    
+LISTEN 0      4096       127.0.0.1:2019      0.0.0.0:*    users:(("caddy",pid=273046,fd=69))                       
+LISTEN 0      511        127.0.0.1:3100      0.0.0.0:*    users:(("next-server (v1",pid=2814875,fd=23))            
+LISTEN 0      511        127.0.0.1:3200      0.0.0.0:*    users:(("next-server (v1",pid=1965418,fd=23))            
+LISTEN 0      4096            [::]:22           [::]:*    users:(("sshd",pid=2771987,fd=4),("systemd",pid=1,fd=95))
+LISTEN 0      4096               *:80              *:*    users:(("caddy",pid=273046,fd=77))                       
+LISTEN 0      4096               *:443             *:*    users:(("caddy",pid=273046,fd=72))                       
+kora_http=200

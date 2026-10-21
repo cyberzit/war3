@@ -1,0 +1,9 @@
+{
+  "test_users": [
+    "check_host_be17763e76",
+    "check_peer_be17763e76"
+  ],
+  "status": "passed",
+  "health_roundtrip_ms_median": 769.9,
+  "health_roundtrip_ms_max": 795.2
+}

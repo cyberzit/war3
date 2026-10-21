@@ -1,0 +1,16 @@
+{
+  "zev": {
+    "username": "ZEV",
+    "password": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+    "recovery_q": "Minil ner hen be?",
+    "recovery_a": "9debd30827f4b24e659ea9f0cfa5c76a6fe62ee80c8b416d9d542a72407e3674",
+    "created": 1792049344.5486493
+  },
+  "test": {
+    "username": "TestPlayer",
+    "password": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+    "recovery_q": "Test question?",
+    "recovery_a": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "created": 1792049344.5486493
+  }
+}

@@ -1,0 +1,75 @@
+MongolRanger deployment — 2026-10-16
+
+Host: 37.27.115.231 (same machine as kora.mn).
+Service: mongolranger.service; enabled at boot, Restart=on-failure.
+API: https://37.27.115.231:8050
+Health: GET /healthz
+API schema: GET /openapi.json
+
+Directories:
+  /opt/mongolranger/app/backend       deployed code
+  /opt/mongolranger/venv              isolated Python dependencies
+  /var/lib/mongolranger              private SQLite state
+  /opt/mongolranger/tls              dedicated TLS server identity
+  /opt/mongolranger/ca               root-only CA signing material
+  /etc/systemd/system/mongolranger.service
+
+Resources: MemoryHigh 1 GiB, hard maximum 2 GiB, CPUQuota 200% (two logical
+cores), TasksMax 128, concurrency 128. This is a limit, not preallocated RAM.
+Idle observed memory about 34 MiB. Shared host has 32 logical CPUs / 128 GB RAM.
+Private system account; no privileges, strict filesystem protection, explicit
+denial of website, Caddy, home and PostgreSQL socket directories.
+
+No Caddy, DNS, firewall, website files, website databases or existing service
+configuration changed. No global Python or OS packages installed. systemd
+daemon-reload registered only the new unit; existing services were not restarted.
+36 existing top-level website/config file hashes and existing listener PIDs
+matched before/after. kora.mn returned HTTP 200 before and after deployment.
+Baseline and after reports are beside this document.
+
+TLS trust:
+  Dedicated private CA; public certificate is backend/server-ca.crt locally.
+  The native client must load this CA explicitly using ssl.create_default_context
+  (cafile=...) and retain hostname verification. Do NOT disable TLS verification
+  or install the CA into the global OS trust store. Browsers do not trust this CA
+  automatically. No kora.mn key or certificate was reused.
+  Server certificate expires 2027-10-16 02:02:15 UTC. Renew the server leaf under
+  this CA before then and restart only mongolranger.service. Keep ca.key private.
+
+Implemented API:
+  POST /api/auth/register      username (3-24 letters/digits/_), password 10-128
+  POST /api/auth/login         returns bearer token; 7 day expiration
+  POST /api/auth/logout        revokes current bearer token
+  GET/POST /api/rooms          list/create rooms (authenticated)
+  POST /api/rooms/{id}/join
+  POST /api/rooms/{id}/heartbeat  host renews every 30s; room expires after 120s
+  POST /api/rooms/{id}/leave      host leaving closes room
+  GET/POST /api/rooms/{id}/messages  members only; last 100 retained
+  Message polling supports ?after=<message id>. No WebSocket yet.
+Passwords use individual random salts and scrypt; only token hashes stored.
+Request body and rate bounds, member/host authorization and room capacity checks.
+
+Validation:
+  Six backend test groups passed on Windows and Ubuntu in temporary databases.
+  Verified external TLS with the CA fetched over existing trusted SSH.
+  Two synthetic accounts: registration/login, room membership/capacity, protected
+  actions, cross-client chat, logout. Their rooms and accounts were cleaned up.
+  New service restart and health recovery passed; kora.mn stayed HTTP 200.
+  Health endpoint: local p50 9.58ms (20 requests, concurrency 5), workstation
+  persistent TLS p50 256.6ms (10 requests); these are small smoke measurements,
+  not a capacity benchmark. New TLS connections cost ~770ms from this workstation.
+
+Operations (SSH as authorized administrator):
+  systemctl status mongolranger
+  journalctl -u mongolranger -n 100 --no-pager
+  systemctl restart mongolranger
+  curl --cacert /opt/mongolranger/ca/ca.crt https://37.27.115.231:8050/healthz
+Rollback stops only the new service:
+  systemctl disable --now mongolranger.service
+Keep the state/code/certificates for investigation; do not touch website services.
+Do not re-run install.sh on an existing deployment: it intentionally refuses.
+
+Remaining: integrate desktop authentication/room UI with this verified TLS API,
+use persistent connections, and then implement host/client transport. No game
+simulation, game relay, NAT traversal, or crash reconnect was deployed here.
+Existing desktop client is not yet wired to this API.
