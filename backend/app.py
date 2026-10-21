@@ -577,6 +577,13 @@ class InviteRespondInput(BaseModel):
     accept: bool | None = None
 
 
+class SlotActionInput(BaseModel):
+    action: str = Field(default="", max_length=32)
+    slot: int = Field(default=0)
+    target_slot: int = Field(default=0)
+    map_name: str = Field(default="", max_length=256)
+
+
 def _compute_elo_level(elo: int) -> tuple[int, str, str]:
     """Returns (level_1_to_10, tier_title, hex_color) for 100..5000 ELO."""
     e = max(100, min(5000, int(elo)))
@@ -848,14 +855,14 @@ def _check_and_penalize_abandon_on_leave(db, room_id: str, user_dict: dict):
     )
     if wroom.winner_team is not None or t0_conn == 0 or t1_conn == 0:
         return False
-    # If match is actively in progress (not LOBBY) and has run for at least 90 seconds with other players still in the room
+    # If match is actively in progress (not LOBBY) and has run for at least 300 seconds (5 minutes) with other players still in the room
     in_progress = wroom.phase not in ("LOBBY", "FAILED") and not wroom.match_scored
     run_duration = (now - wroom.match_started_at) if wroom.match_started_at > 0 else 0.0
     init_cnt = int(getattr(wroom, "initial_player_count", 0) or len(wroom.peers))
     if 0 < init_cnt <= 4:
         return False
     mem_count = db.execute("SELECT count(*) FROM members WHERE room_id=?", (room_id,)).fetchone()[0]
-    if in_progress and run_duration >= 90.0 and mem_count >= 2:
+    if in_progress and run_duration >= 300.0 and mem_count >= 2:
         pst = wroom.ensure_player_stat(uname)
         if not pst.get("abandoned"):
             pst["abandoned"] = True
@@ -946,14 +953,7 @@ def _score_w3gs_match(wroom):
             won = (team == win_team)
 
             if not is_ranked_5v5:
-                # Non-5v5 match (1v1-4v4): count Kills/Deaths/Assists and match history, but NEVER count W-L, 10-match calibration, or ELO!
-                if k > 0 or d > 0 or a > 0 or wroom.winner_team is not None:
-                    db.execute(
-                        "UPDATE users SET kills=?, deaths=?, assists=? WHERE id=?",
-                        (tot_kills + k, tot_deaths + d, tot_assists + a, u_row["id"]),
-                    )
-                    _record_match_history(db, u_row["id"], wroom, "WIN" if won else "LOSS", k, d, a, team, 0, 0, now)
-                    summary_parts.append(f"{pname} ({k}/{d}/{a} • ELO & W-L зөвхөн 5v5 дээр бодогдоно)")
+                # Non-5v5 match: ELO is strictly only for full 5v5 matches
                 continue
 
             streak += 1
@@ -2471,35 +2471,12 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
         }
         for m in reversed(msg_rows)
         if m["user_id"] not in blocked_ids
-        and not (ui >= 2 and m["text"].startswith("⏱️ [КОМАНДЫН ЗААВАР]"))
+        and not m["text"].startswith("⏱️ [КОМАНДЫН ЗААВАР]")
         and not (
             m["user_id"] == user["id"]
             and (m["text"].startswith("🚨 [АНХААРУУЛГА]") or m["text"].startswith("⚠️ [АНХААРУУЛГА]"))
         )
     ]
-    if ui < 2:
-        messages_out = [
-            {
-                "id": 0,
-                "uid_num": 10000,
-                "username": "⚡ ЛОББИ КОМАНД",
-                "sender": "⚡ ЛОББИ КОМАНД",
-                "text": "⏱️ -start (Эхлүүлэх) • -1v1 -2v2 -3v3 -4v4 (Мөнгө хасах 853g) • -close 2 (Суудал хаах) • -openall (Нээх) • -swap 2 6 (Солих)",
-                "message": "⏱️ -start (Эхлүүлэх) • -1v1 -2v2 -3v3 -4v4 (Мөнгө хасах 853g) • -close 2 (Суудал хаах) • -openall (Нээх) • -swap 2 6 (Солих)",
-                "created_at": 0,
-                "time_str": "",
-            },
-            {
-                "id": 0,
-                "uid_num": 10000,
-                "username": "🛡️ ТОГЛОЛТ КОМАНД",
-                "sender": "🛡️ ТОГЛОЛТ КОМАНД",
-                "text": "⏱️ -rmk (5 мин дотор дахин эхлэх: 1v1/2v2 2 санал, 3v3-5v5 3 санал) • -gg (Бууж өгөх) • -addtime (Хүлээх цаг +1 мин сунгах)",
-                "message": "⏱️ -rmk (5 мин дотор дахин эхлэх: 1v1/2v2 2 санал, 3v3-5v5 3 санал) • -gg (Бууж өгөх) • -addtime (Хүлээх цаг +1 мин сунгах)",
-                "created_at": 0,
-                "time_str": "",
-            },
-        ] + messages_out
     wait_rem = wroom.get_wait_remaining_sec()
     my_w3gs_conn = 1 if (user["name"] in wroom.peers and wroom.peers[user["name"]].writer is not None) else 0
     my_disc = 1 if (wroom.phase != "LOBBY" and (wroom.absent == user["name"] or user["name"] in wroom.disconnected_players)) else 0
@@ -2545,6 +2522,7 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
             else None
         ),
         "lan_ad_hex": wroom.get_lan_advertisement(local_port).hex(),
+        "slots": [dict(s) for s in wroom.slots[:10]],
         "members": members_out,
         "messages": messages_out,
         "players": [
@@ -2876,78 +2854,67 @@ async def message(rid: str, data: ChatInput, user=Depends(current_user)):
             return mid_val
 
     if low_cmd.startswith(("-", "!", "/")) and wroom:
-        slot_res = await wroom.execute_lobby_slot_command(user["name"], msg_text)
-        if slot_res is not None:
-            ok_slot, rep_slot = slot_res
-            if not rep_slot:
-                return {"id": 0, "ok": ok_slot, "message": ""}
-            post_slot = f"🤖 {rep_slot}" if ok_slot else f"⚠️ {rep_slot}"
-            mid = await asyncio.to_thread(_db_insert_msg, post_slot)
-            return {"id": mid, "ok": ok_slot, "message": rep_slot}
         cmd_parts = msg_text[1:].split()
         cmd_head = cmd_parts[0].lower() if cmd_parts else ""
         is_room_host = wroom._is_effective_host(user["name"])
-        if cmd_head in ("help", "zaavar", "cmd", "commands"):
-            rep_txt = (
-                "📖 [КОМАНДЫН ЗААВАР] Лоббид: -start • -1v1 -2v2 -3v3 -4v4 (Илүү суудал хааж 853g болгох) • "
-                "-close 2 • -openall • -swap 2 6 | Тоглолтод: -rmk (5м дотор дахин эхлэх: 1v1/2v2 2, 3v3-5v5 3 санал) • -gg (Бууж өгөх) • -addtime (+1м хүлээх)"
-            )
-            await wroom.send_all_chat("|cFF00FF88[MongolRanger]|r Lobbied: -1v1 -2v2 -3v3 -4v4 -close -openall -swap -start | Togloltod: -rmk -gg -addtime")
-            mid = await asyncio.to_thread(_db_insert_msg, rep_txt)
-            return {"id": mid, "ok": True, "message": rep_txt}
-        if cmd_head in ("start", "s", "go"):
-            if not is_room_host:
-                err_txt = f"⚠️ Зөвхөн өрөөний Host ({wroom.owner_name}) -start командаар тоглоомыг эхлүүлэх эрхтэй!"
-                mid = await asyncio.to_thread(_db_insert_msg, err_txt)
-                return {"id": mid, "ok": False, "message": err_txt}
-            started = await wroom.start_game(force=True)
-            rep_txt = "🚀 Host -start командаар тоглоомыг эхлүүллээ!" if started else "⚠️ Warcraft III LAN өрөөнд тоглогч ороогүй эсвэл тоглолт аль хэдийн эхэлсэн байна."
-            mid = await asyncio.to_thread(_db_insert_msg, rep_txt)
-            return {"id": mid, "ok": started, "message": rep_txt}
         if cmd_head == "swap":
             if not is_room_host:
-                err_txt = f"⚠️ Зөвхөн өрөөний Host ({wroom.owner_name}) -swap командаар суудал солих эрхтэй!"
-                mid = await asyncio.to_thread(_db_insert_msg, err_txt)
-                return {"id": mid, "ok": False, "message": err_txt}
+                return {"id": 0, "ok": False, "message": ""}
             if wroom.phase != "LOBBY":
-                err_txt = "⚠️ -swap командыг зөвхөн тоглолт эхлэхээс өмнө Лобби дотор ашиглана!"
-                mid = await asyncio.to_thread(_db_insert_msg, err_txt)
-                return {"id": mid, "ok": False, "message": err_txt}
+                return {"id": 0, "ok": False, "message": ""}
             if len(cmd_parts) >= 3:
                 try:
                     s1, s2 = int(cmd_parts[1]) - 1, int(cmd_parts[2]) - 1
                     await wroom.swap_slots(s1, s2)
-                    rep_txt = f"🔄 Host «{user['name']}» {cmd_parts[1]}-р болон {cmd_parts[2]}-р суудлыг солилоо (-swap {cmd_parts[1]} {cmd_parts[2]})."
-                    await wroom.send_all_chat(f"|cFF00FF88[MongolRanger]|r {rep_txt}")
+                    rep_txt = f"🔄 {cmd_parts[1]}-р болон {cmd_parts[2]}-р суудлыг солилоо (-swap {cmd_parts[1]} {cmd_parts[2]})."
+                    await wroom.send_all_chat(f"|cFF00FF88[Host]|r {rep_txt}")
                     mid = await asyncio.to_thread(_db_insert_msg, rep_txt)
                     return {"id": mid, "ok": True, "message": rep_txt}
                 except ValueError:
                     pass
-            err_txt = "⚠️ Суудал солих жишээ: -swap 2 6"
-            mid = await asyncio.to_thread(_db_insert_msg, err_txt)
-            return {"id": mid, "ok": False, "message": err_txt}
-    if low_cmd in ("!addtime", "/addtime", "-addtime", "!time", "!wait", "-time", "-wait") and wroom:
-        ok, reply_msg, rem = await wroom.add_wait_time(user["name"])
-        post_text = reply_msg if ok else f"⚠️ {reply_msg}"
-        mid = await asyncio.to_thread(_db_insert_msg, post_text)
-        return {
-            "id": mid,
-            "ok": ok,
-            "message": reply_msg,
-            "wait_remaining_sec": rem,
-            "addtime_used": wroom.addtime_count,
-            "addtime_max": wroom.addtime_max,
-        }
-    if low_cmd in ("!rmk", "/rmk", "-rmk", "!remake", "-remake", "-warda", "!warda", "/warda") and wroom:
-        ok, reply_msg = await wroom.vote_remake(user["name"], force_by_host=wroom._is_effective_host(user["name"]))
-        mid = await asyncio.to_thread(_db_insert_msg, reply_msg)
-        return {"id": mid, "ok": ok, "message": reply_msg}
-    if low_cmd in ("-gg", "!gg", "/gg", "-ff", "!ff", "/ff", "!forfeit", "-forfeit", "!surrender", "-surrender") and wroom:
-        ok, reply_msg = await wroom.vote_forfeit(user["name"])
-        mid = await asyncio.to_thread(_db_insert_msg, reply_msg)
-        return {"id": mid, "ok": ok, "message": reply_msg}
+            return {"id": 0, "ok": False, "message": ""}
     mid = await asyncio.to_thread(_db_insert_msg, msg_text, True)
     return {"id": mid, "ok": True}
+
+
+@app.post("/api/rooms/{rid}/slot")
+async def room_slot_action(rid: str, data: SlotActionInput, user=Depends(current_user)):
+    wroom = w3gs_manager.get_room(rid)
+    if not wroom:
+        raise HTTPException(404, "Room not found")
+    act = (data.action or "").strip().lower()
+    if act == "map":
+        def _db_update_map():
+            with database() as db:
+                db.execute("BEGIN IMMEDIATE")
+                require_member(db, rid, user)
+                room = db.execute("SELECT * FROM rooms WHERE id=?", (rid,)).fetchone()
+                if not room:
+                    raise HTTPException(404, "Room not found")
+                if room["owner"] != user["id"] and not wroom._is_effective_host(user["name"]):
+                    raise HTTPException(403, "Only host can change map")
+                raw_map = (data.map_name or "").strip()
+                if not raw_map:
+                    return None
+                meta = resolve_map_meta(db, raw_map)
+                db.execute("UPDATE rooms SET map_name=?, updated=? WHERE id=?", (meta["filename"], time.time(), rid))
+                return meta
+        meta = await asyncio.to_thread(_db_update_map)
+        if meta:
+            await wroom.update_map_meta(meta)
+        return {
+            "ok": True,
+            "map_name": meta["filename"] if meta else wroom.map_name,
+            "lan_ad_hex": wroom.get_lan_advertisement(6210).hex(),
+            "slots": [dict(s) for s in wroom.slots[:10]],
+        }
+    ok, msg = await wroom.host_set_slot(user["name"], act, int(data.slot or 0), int(data.target_slot or 0))
+    return {
+        "ok": ok,
+        "message": msg,
+        "phase": wroom.phase,
+        "slots": [dict(s) for s in wroom.slots[:10]],
+    }
 
 
 # ---------------------------------------------------------------------------

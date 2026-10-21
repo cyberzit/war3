@@ -683,6 +683,25 @@ namespace MongolRanger
         private static TextBlock lblWaitOverlayTitle = null;
         private static TextBlock lblWaitOverlaySub = null;
 
+        // GameRanger-style Launch Loading Overlay & Warcraft III Native Lobby Host Mouse Controls
+        private static Window gameLaunchOverlayWin = null;
+        private static TextBlock lblLaunchOverlayStep = null;
+        private static TextBlock lblLaunchOverlayPct = null;
+        private static Border launchOverlayBarFill = null;
+        private static volatile bool isLaunchingWar3Overlay = false;
+
+        private static Window war3LobbyHostWin = null;
+        private static Border[] lobbySlotBorders = new Border[10];
+        private static TextBlock[] lblLobbySlotTexts = new TextBlock[10];
+        private static TextBlock lblLobbySelectedSlotTitle = null;
+        private static TextBlock lblLobbyHostStatus = null;
+        private static TextBlock lblLobbyStartBtnText = null;
+        private static int selectedLobbySlot = 2;
+        private static int swapPendingSlot = 0;
+        private static string[] currentLobbySlotLabels = new string[] { "1. 👑 Host", "2. 🔓 Open", "3. 🔓 Open", "4. 🔓 Open", "5. 🔓 Open", "6. 🔓 Open", "7. 🔓 Open", "8. 🔓 Open", "9. 🔓 Open", "10. 🔓 Open" };
+        private static string[] currentLobbySlotHex = new string[] { "#FBBF24", "#34D399", "#34D399", "#34D399", "#34D399", "#34D399", "#34D399", "#34D399", "#34D399", "#34D399" };
+        private static int waitHudTickSub = 0;
+
         // WarKey & QuickChat Elements (6 Inventory + 8 Skills + QuickChat list — all empty by default)
         private static Button[] wkButtons = new Button[6];
         private static string[] wkKeys = new string[] { "", "", "", "", "", "" };
@@ -1550,22 +1569,11 @@ namespace MongolRanger
                       </Grid.RowDefinitions>
                       <TextBlock Grid.Row='0' Text='💬 ӨРӨӨНИЙ НИЙТИЙН ЧАТ' Foreground='#38BDF8' FontWeight='ExtraBold' FontSize='11.5' Margin='0,0,0,6' TextWrapping='Wrap'/>
                       <Border Grid.Row='1' Background='#0A0E19' CornerRadius='8' BorderBrush='#1B263B' BorderThickness='1' Padding='10,6' Margin='0,0,0,8'>
-                        <StackPanel>
-                          <TextBlock FontSize='10.2' TextWrapping='Wrap' LineHeight='14.5'>
-                            <Run Text='⚡ Лобби команд:' Foreground='#38BDF8' FontWeight='ExtraBold'/>
-                            <Run Text='  -start' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Эхлүүлэх)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-1v1  -2v2  -3v3  -4v4' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Илүү суудал хааж мөнгө хасах 853g)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-close 2' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Суудал хаах)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-openall' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Нээх)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-swap 2 6' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Суудал солих)' Foreground='#94A3B8'/>
-                          </TextBlock>
-                          <TextBlock FontSize='10.2' TextWrapping='Wrap' LineHeight='14.5' Margin='0,2,0,0'>
-                            <Run Text='🛡️ Тоглолтын дунд:' Foreground='#34D399' FontWeight='ExtraBold'/>
-                            <Run Text='  -rmk' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (5 мин дотор дахин эхлэх: 1v1/2v2 2, 3v3-5v5 3)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-gg' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Бууж өгөх)  • ' Foreground='#94A3B8'/>
-                            <Run Text='-addtime' Foreground='#FBBF24' FontWeight='Bold'/><Run Text=' (Гарсан тоглогч хүлээх цаг +1 мин сунгах)' Foreground='#94A3B8'/>
-                          </TextBlock>
-                        </StackPanel>
+                        <TextBlock FontSize='10.5' TextWrapping='Wrap'>
+                          <Run Text='🎮 Warcraft III LAN:' Foreground='#34D399' FontWeight='ExtraBold'/>
+                          <Run Text=' Host хулганаараа суудал (Open / Close / Computer Easy•Normal•Insane) тохируулж «Start Game» дарж эхлүүлнэ  •  Суудал солих команд: ' Foreground='#94A3B8'/>
+                          <Run Text='-swap 2 6' Foreground='#FBBF24' FontWeight='Bold'/>
+                        </TextBlock>
                       </Border>
                       <Border Grid.Row='2' Background='#090D16' CornerRadius='10' BorderBrush='#172033' BorderThickness='1' Padding='10,8' Margin='0,0,0,10'>
                         <ScrollViewer Name='RoomChatScroll' VerticalScrollBarVisibility='Auto' HorizontalScrollBarVisibility='Disabled'>
@@ -2595,14 +2603,19 @@ namespace MongolRanger
             timer.Start();
 
             DispatcherTimer waitHudTimer = new DispatcherTimer();
-            waitHudTimer.Interval = TimeSpan.FromSeconds(1);
+            waitHudTimer.Interval = TimeSpan.FromMilliseconds(500);
             waitHudTimer.Tick += (s, e) =>
             {
                 try
                 {
-                    if (currentRoomWaitRemSec > 0 && (currentRoomPhase == "WAITING" || currentRoomPhase == "FROZEN" || !string.IsNullOrEmpty(currentRoomAbsent)))
-                        currentRoomWaitRemSec--;
+                    waitHudTickSub++;
+                    if (waitHudTickSub % 2 == 0)
+                    {
+                        if (currentRoomWaitRemSec > 0 && (currentRoomPhase == "WAITING" || currentRoomPhase == "FROZEN" || !string.IsNullOrEmpty(currentRoomAbsent)))
+                            currentRoomWaitRemSec--;
+                    }
                     UpdateWaitScreenOverlay();
+                    UpdateWar3LobbyHostOverlay();
                 }
                 catch { }
             };
@@ -2613,6 +2626,8 @@ namespace MongolRanger
                 running = false;
                 UninstallWarKeyHook();
                 try { if (waitOverlayWin != null) waitOverlayWin.Close(); } catch { }
+                try { if (gameLaunchOverlayWin != null) gameLaunchOverlayWin.Close(); } catch { }
+                try { if (war3LobbyHostWin != null) war3LobbyHostWin.Close(); } catch { }
                 try { if (proxyListener != null) proxyListener.Stop(); } catch { }
                 try { if (udpBroadcaster != null) udpBroadcaster.Close(); } catch { }
             };
@@ -3774,7 +3789,7 @@ namespace MongolRanger
                             lblWaitBannerTitle.Foreground = HexBrush("#10B981");
                         }
                         if (lblWaitBannerSub != null)
-                            lblWaitBannerSub.Text = "Host тоглолт эхлүүлэхийг (-start) хүлээж байна...";
+                            lblWaitBannerSub.Text = "Host тоглолт эхлүүлэхийг хүлээж байна...";
                     }
                     else if (!war3Open && (currentRoomLaunchSig > 0 || hasLaunchedWar3InCurrentRoom))
                     {
@@ -3797,6 +3812,8 @@ namespace MongolRanger
                             lblWaitBannerSub.Text = "Host эхлүүлмэгц таны Warcraft III автоматаар асна (энд дарж урьдчилж асааж болно)";
                     }
                 }
+                UpdateWaitScreenOverlay();
+                UpdateWar3LobbyHostOverlay();
                 return;
             }
 
@@ -3809,7 +3826,7 @@ namespace MongolRanger
             if (btnAddWaitTime != null)
                 btnAddWaitTime.Visibility = (waitingForSomeone && currentRoomAddtimeUsed < currentRoomAddtimeMax) ? Visibility.Visible : Visibility.Collapsed;
             if (lblAddWaitTimeText != null)
-                lblAddWaitTimeText.Text = "⏱️ +1 минут сунгах (-addtime " + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")";
+                lblAddWaitTimeText.Text = "⏱️ +1 минут сунгах (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")";
 
             if (btnHostDropAbsent != null)
                 btnHostDropAbsent.Visibility = (waitingForSomeone && isCurrentRoomOwner && currentRoomCanHostDrop && !isMeAbsent) ? Visibility.Visible : Visibility.Collapsed;
@@ -3864,7 +3881,7 @@ namespace MongolRanger
                     }
                     if (lblWaitBannerSub != null)
                     {
-                        lblWaitBannerSub.Text = "Стандарт хүлээх хугацаа: 3 мин (180 сек) • Чат дээр -addtime бичиж +1 мин сунгана (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")";
+                        lblWaitBannerSub.Text = "Гэнэт салсан тоглогчийг хүлээх хугацаа: 3 мин (180 сек)";
                     }
                 }
                 else
@@ -3881,6 +3898,7 @@ namespace MongolRanger
                 }
             }
             UpdateWaitScreenOverlay();
+            UpdateWar3LobbyHostOverlay();
         }
 
         private static void EnsureWaitOverlayCreated()
@@ -3925,7 +3943,7 @@ namespace MongolRanger
                 };
                 lblWaitOverlaySub = new TextBlock
                 {
-                    Text = "Гаран дээр шууд -addtime гэж бичих эсвэл ЭНД ДАРЖ +1 минут сунгана уу",
+                    Text = "ЭНД ДАРЖ хүлээх хугацааг +1 минут сунгана уу",
                     Foreground = HexBrush("#FFFFFF"),
                     FontWeight = FontWeights.Bold,
                     FontSize = 12,
@@ -3975,7 +3993,7 @@ namespace MongolRanger
                     lblWaitOverlayTitle.Text = "🚨 АНХААР: «" + who + "»-ийг хүлээх хугацаа дуусахад " + rem + " сек үлдлээ!";
                     lblWaitOverlaySub.Foreground = HexBrush("#FDE047");
                     lblWaitOverlaySub.Text = (currentRoomAddtimeUsed < currentRoomAddtimeMax)
-                        ? ("👉 -addtime командаар +1 минут сунгана уу! (Гаран дээр -addtime бичих эсвэл ЭНД ДАРНА УУ • " + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")")
+                        ? ("👉 ЭНД ДАРЖ хүлээх хугацааг +1 минут сунгана уу! (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")")
                         : "⚠️ Нэмэлт цаг сунгах эрх дууссан (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")";
                 }
                 else
@@ -3986,12 +4004,553 @@ namespace MongolRanger
                     lblWaitOverlayTitle.Text = "⏳ «" + who + "» тоглолтонд эргэж орохыг хүлээж байна (" + FormatWaitMmSs(rem) + ")";
                     lblWaitOverlaySub.Foreground = HexBrush("#E2E8F0");
                     lblWaitOverlaySub.Text = (currentRoomAddtimeUsed < currentRoomAddtimeMax)
-                        ? ("⏱️ Цаг сунгах: Гаран дээр шууд -addtime гэж бичих эсвэл ЭНД ДАРЖ +1 минут сунгана (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")")
+                        ? ("⏱️ Цаг сунгах: ЭНД ДАРЖ +1 минут сунгана уу (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")")
                         : ("Нэмэлт цаг сунгах эрх дууссан (" + currentRoomAddtimeUsed + "/" + currentRoomAddtimeMax + ")");
                 }
 
                 if (!waitOverlayWin.IsVisible)
                     waitOverlayWin.Show();
+            }
+            catch { }
+        }
+
+        private static void EnsureGameLaunchOverlayCreated()
+        {
+            if (gameLaunchOverlayWin != null) return;
+            try
+            {
+                gameLaunchOverlayWin = new Window
+                {
+                    Title = "ZevArena Game Launch",
+                    Width = 480,
+                    Height = 160,
+                    WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Background = Brushes.Transparent,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    ShowActivated = false,
+                    Focusable = false,
+                    ResizeMode = ResizeMode.NoResize,
+                    Left = Math.Max(20, (SystemParameters.PrimaryScreenWidth - 480) / 2.0),
+                    Top = Math.Max(40, (SystemParameters.PrimaryScreenHeight - 160) / 2.0)
+                };
+                Border card = new Border
+                {
+                    CornerRadius = new CornerRadius(14),
+                    Background = HexBrush("#F40B101E"),
+                    BorderBrush = HexBrush("#10B981"),
+                    BorderThickness = new Thickness(2),
+                    Padding = new Thickness(22, 18, 22, 18)
+                };
+                StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                Grid hdr = new Grid();
+                hdr.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                hdr.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                TextBlock title = new TextBlock
+                {
+                    Text = "🚀 ZevArena — Тоглоом Эхэлж Байна...",
+                    Foreground = HexBrush("#FFFFFF"),
+                    FontWeight = FontWeights.ExtraBold,
+                    FontSize = 15
+                };
+                lblLaunchOverlayPct = new TextBlock
+                {
+                    Text = "25%",
+                    Foreground = HexBrush("#34D399"),
+                    FontWeight = FontWeights.ExtraBold,
+                    FontSize = 14
+                };
+                Grid.SetColumn(title, 0);
+                Grid.SetColumn(lblLaunchOverlayPct, 1);
+                hdr.Children.Add(title);
+                hdr.Children.Add(lblLaunchOverlayPct);
+
+                lblLaunchOverlayStep = new TextBlock
+                {
+                    Text = "🗺️ Map болон LAN сүлжээний холболтыг бэлтгэж байна...",
+                    Foreground = HexBrush("#94A3B8"),
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 12,
+                    Margin = new Thickness(0, 8, 0, 12)
+                };
+
+                Border barTrack = new Border
+                {
+                    Height = 14,
+                    Width = 432,
+                    CornerRadius = new CornerRadius(7),
+                    Background = HexBrush("#131C31"),
+                    BorderBrush = HexBrush("#1E293B"),
+                    BorderThickness = new Thickness(1),
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                launchOverlayBarFill = new Border
+                {
+                    Height = 12,
+                    Width = 108,
+                    CornerRadius = new CornerRadius(6),
+                    Background = HexBrush("#10B981"),
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                barTrack.Child = launchOverlayBarFill;
+
+                TextBlock subHint = new TextBlock
+                {
+                    Text = "⚡ Warcraft III 1.26a автоматаар асч байна, түр хүлээнэ үү...",
+                    Foreground = HexBrush("#FBBF24"),
+                    FontWeight = FontWeights.Bold,
+                    FontSize = 11,
+                    Margin = new Thickness(0, 10, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+
+                sp.Children.Add(hdr);
+                sp.Children.Add(lblLaunchOverlayStep);
+                sp.Children.Add(barTrack);
+                sp.Children.Add(subHint);
+                card.Child = sp;
+                gameLaunchOverlayWin.Content = card;
+            }
+            catch { gameLaunchOverlayWin = null; }
+        }
+
+        private static void LaunchWarcraftWithLoadingOverlay(bool requireActiveRoom = true)
+        {
+            if (requireActiveRoom && string.IsNullOrEmpty(currentRoomId)) return;
+            if (isLaunchingWar3Overlay) return;
+            isLaunchingWar3Overlay = true;
+            mainWin.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    EnsureGameLaunchOverlayCreated();
+                    if (gameLaunchOverlayWin != null)
+                    {
+                        lblLaunchOverlayPct.Text = "25%";
+                        lblLaunchOverlayStep.Text = "⏳ 1/3 • Map болон Anti-MapHack хамгаалалтыг шалгаж байна...";
+                        launchOverlayBarFill.Width = 110;
+                        gameLaunchOverlayWin.Left = Math.Max(20, (SystemParameters.PrimaryScreenWidth - 480) / 2.0);
+                        gameLaunchOverlayWin.Top = Math.Max(40, (SystemParameters.PrimaryScreenHeight - 160) / 2.0);
+                        if (!gameLaunchOverlayWin.IsVisible)
+                            gameLaunchOverlayWin.Show();
+                    }
+                }
+                catch { }
+            }));
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Thread.Sleep(380);
+                    if (!string.IsNullOrEmpty(currentRoomMapName))
+                    {
+                        try { EnsureMapDownloaded("", currentRoomMapName, ""); } catch { }
+                    }
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            if (gameLaunchOverlayWin != null)
+                            {
+                                lblLaunchOverlayPct.Text = "65%";
+                                lblLaunchOverlayStep.Text = "📡 2/3 • Warcraft III LAN өрөөний холболтыг үүсгэж байна...";
+                                launchOverlayBarFill.Width = 280;
+                            }
+                        }
+                        catch { }
+                    }));
+                    Thread.Sleep(420);
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            if (gameLaunchOverlayWin != null)
+                            {
+                                lblLaunchOverlayPct.Text = "100%";
+                                lblLaunchOverlayStep.Text = "🎮 3/3 • Warcraft III 1.26a тоглоомыг асааж байна...";
+                                launchOverlayBarFill.Width = 430;
+                            }
+                            LaunchWarcraftIfNotRunning(requireActiveRoom);
+                            UpdateInnerRoomVisibility();
+                        }
+                        catch { }
+                    }));
+                    Thread.Sleep(650);
+                }
+                catch { }
+                finally
+                {
+                    isLaunchingWar3Overlay = false;
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            if (gameLaunchOverlayWin != null && gameLaunchOverlayWin.IsVisible)
+                                gameLaunchOverlayWin.Hide();
+                        }
+                        catch { }
+                    }));
+                }
+            });
+        }
+
+        private static Border CreateHostOverlayBtn(string text, string bgHex, string borderHex, string fgHex, Action onClick, double padX = 7, double padY = 4, double fontSize = 10.5)
+        {
+            Border b = new Border
+            {
+                Background = HexBrush(bgHex),
+                BorderBrush = HexBrush(borderHex),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(padX, padY, padX, padY),
+                Margin = new Thickness(2),
+                Cursor = Cursors.Hand
+            };
+            TextBlock tb = new TextBlock
+            {
+                Text = text,
+                Foreground = HexBrush(fgHex),
+                FontWeight = FontWeights.ExtraBold,
+                FontSize = fontSize,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            b.Child = tb;
+            b.MouseLeftButtonDown += (s, e) => { try { onClick(); } catch { } };
+            return b;
+        }
+
+        private static void EnsureWar3LobbyHostOverlayCreated()
+        {
+            if (war3LobbyHostWin != null) return;
+            try
+            {
+                war3LobbyHostWin = new Window
+                {
+                    Title = "ZevArena War3 Host Controls",
+                    Width = 345,
+                    Height = 355,
+                    WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Background = Brushes.Transparent,
+                    Topmost = true,
+                    ShowInTaskbar = false,
+                    ShowActivated = false,
+                    Focusable = false,
+                    ResizeMode = ResizeMode.NoResize,
+                    Left = SystemParameters.PrimaryScreenWidth - 375,
+                    Top = SystemParameters.PrimaryScreenHeight - 430
+                };
+
+                Border root = new Border
+                {
+                    CornerRadius = new CornerRadius(11),
+                    Background = HexBrush("#EE0B101D"),
+                    BorderBrush = HexBrush("#F59E0B"),
+                    BorderThickness = new Thickness(1.8),
+                    Padding = new Thickness(10, 8, 10, 8)
+                };
+
+                StackPanel sp = new StackPanel();
+
+                // 1. Header
+                TextBlock hdr = new TextBlock
+                {
+                    Text = "👑 HOST СУУДАЛ & ТОГЛОЛТ УДИРДЛАГА",
+                    Foreground = HexBrush("#FBBF24"),
+                    FontWeight = FontWeights.ExtraBold,
+                    FontSize = 11.5,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                sp.Children.Add(hdr);
+
+                // 2. Quick Mode Presets (853g Bot Fill)
+                StackPanel modeRow = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 5)
+                };
+                modeRow.Children.Add(CreateHostOverlayBtn("1v1 (853g)", "#172554", "#38BDF8", "#E0F2FE", () => SendHostSlotAction("1v1", 0, 0), 6, 3, 10));
+                modeRow.Children.Add(CreateHostOverlayBtn("2v2 (853g)", "#172554", "#38BDF8", "#E0F2FE", () => SendHostSlotAction("2v2", 0, 0), 6, 3, 10));
+                modeRow.Children.Add(CreateHostOverlayBtn("3v3 (853g)", "#172554", "#38BDF8", "#E0F2FE", () => SendHostSlotAction("3v3", 0, 0), 6, 3, 10));
+                modeRow.Children.Add(CreateHostOverlayBtn("4v4 (853g)", "#172554", "#38BDF8", "#E0F2FE", () => SendHostSlotAction("4v4", 0, 0), 6, 3, 10));
+                modeRow.Children.Add(CreateHostOverlayBtn("5v5 Нээх", "#0F291E", "#10B981", "#6EE7B7", () => SendHostSlotAction("5v5", 0, 0), 6, 3, 10));
+                sp.Children.Add(modeRow);
+
+                // 3. 10 Slots Grid (2 Columns: Sentinel 1..5 & Scourge 6..10)
+                Grid slotsGrid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+                slotsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                slotsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6, GridUnitType.Pixel) });
+                slotsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                for (int r = 0; r < 5; r++)
+                    slotsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                for (int i = 0; i < 10; i++)
+                {
+                    int slotNum = i + 1;
+                    Border sb = new Border
+                    {
+                        Background = (slotNum == selectedLobbySlot) ? HexBrush("#231D3F") : HexBrush("#131B2E"),
+                        BorderBrush = (slotNum == selectedLobbySlot) ? HexBrush("#FBBF24") : HexBrush("#24304C"),
+                        BorderThickness = new Thickness(1.2),
+                        CornerRadius = new CornerRadius(5),
+                        Padding = new Thickness(6, 3.5, 6, 3.5),
+                        Margin = new Thickness(0, 1.5, 0, 1.5),
+                        Cursor = Cursors.Hand
+                    };
+                    TextBlock stb = new TextBlock
+                    {
+                        Text = currentLobbySlotLabels[i],
+                        Foreground = HexBrush(currentLobbySlotHex[i]),
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 10.5,
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    };
+                    sb.Child = stb;
+                    sb.MouseLeftButtonDown += (s, e) => OnLobbyOverlaySlotClicked(slotNum);
+                    lobbySlotBorders[i] = sb;
+                    lblLobbySlotTexts[i] = stb;
+                    Grid.SetColumn(sb, i < 5 ? 0 : 2);
+                    Grid.SetRow(sb, i < 5 ? i : (i - 5));
+                    slotsGrid.Children.Add(sb);
+                }
+                sp.Children.Add(slotsGrid);
+
+                // 4. Selected Slot Action Bar (Open / Close / Easy / Normal / Insane / Swap)
+                Border actBox = new Border
+                {
+                    Background = HexBrush("#111827"),
+                    BorderBrush = HexBrush("#334155"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(7),
+                    Padding = new Thickness(6, 5, 6, 5),
+                    Margin = new Thickness(0, 0, 0, 6)
+                };
+                StackPanel actSp = new StackPanel();
+                lblLobbySelectedSlotTitle = new TextBlock
+                {
+                    Text = "🎯 Сонгосон суудал: #2 (Хулганаар дарж өөрчилнө)",
+                    Foreground = HexBrush("#E2E8F0"),
+                    FontWeight = FontWeights.ExtraBold,
+                    FontSize = 10.5,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 4)
+                };
+                actSp.Children.Add(lblLobbySelectedSlotTitle);
+
+                StackPanel actRow1 = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+                actRow1.Children.Add(CreateHostOverlayBtn("🔓 Open", "#0F291E", "#10B981", "#34D399", () => SendHostSlotAction("open", selectedLobbySlot, 0), 7, 3, 10));
+                actRow1.Children.Add(CreateHostOverlayBtn("🔒 Closed", "#1E293B", "#64748B", "#CBD5E1", () => SendHostSlotAction("closed", selectedLobbySlot, 0), 7, 3, 10));
+                actRow1.Children.Add(CreateHostOverlayBtn("🔄 Swap", "#23183E", "#8B5CF6", "#C4B5FD", () =>
+                {
+                    swapPendingSlot = selectedLobbySlot;
+                    RefreshWar3LobbyHostSlotVisuals();
+                }, 7, 3, 10));
+                actSp.Children.Add(actRow1);
+
+                StackPanel actRow2 = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
+                actRow2.Children.Add(CreateHostOverlayBtn("🤖 Easy (853g)", "#0C2D48", "#38BDF8", "#7DD3FC", () => SendHostSlotAction("easy", selectedLobbySlot, 0), 6, 3, 10));
+                actRow2.Children.Add(CreateHostOverlayBtn("🤖 Normal (853g)", "#2D2112", "#F59E0B", "#FDE68A", () => SendHostSlotAction("normal", selectedLobbySlot, 0), 6, 3, 10));
+                actRow2.Children.Add(CreateHostOverlayBtn("🤖 Insane (853g)", "#3B1219", "#EF4444", "#FCA5A5", () => SendHostSlotAction("insane", selectedLobbySlot, 0), 6, 3, 10));
+                actSp.Children.Add(actRow2);
+
+                actBox.Child = actSp;
+                sp.Children.Add(actBox);
+
+                // 5. Big Clickable START GAME Button
+                Border btnStart = new Border
+                {
+                    Background = HexBrush("#10B981"),
+                    BorderBrush = HexBrush("#FBBF24"),
+                    BorderThickness = new Thickness(1.8),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Cursor = Cursors.Hand
+                };
+                lblLobbyStartBtnText = new TextBlock
+                {
+                    Text = "🚀 START GAME (ТОГЛОЛТ ЭХЛҮҮЛЭХ)",
+                    Foreground = HexBrush("#04130D"),
+                    FontWeight = FontWeights.ExtraBold,
+                    FontSize = 12.5,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+                btnStart.Child = lblLobbyStartBtnText;
+                btnStart.MouseLeftButtonDown += (s, e) =>
+                {
+                    lblLobbyStartBtnText.Text = "⏳ ТОГЛОЛТ ЭХЭЛЖ БАЙНА...";
+                    SendHostSlotAction("start", 0, 0);
+                };
+                sp.Children.Add(btnStart);
+
+                lblLobbyHostStatus = new TextBlock
+                {
+                    Text = "💡 Суудал (1..10) дээр дарж Open/Close/Bot сонгоод Start Game дарна уу",
+                    Foreground = HexBrush("#94A3B8"),
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 4, 0, 0),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                sp.Children.Add(lblLobbyHostStatus);
+
+                root.Child = sp;
+                war3LobbyHostWin.Content = root;
+            }
+            catch { war3LobbyHostWin = null; }
+        }
+
+        private static void OnLobbyOverlaySlotClicked(int slotNum)
+        {
+            if (swapPendingSlot > 0 && swapPendingSlot != slotNum)
+            {
+                int s1 = swapPendingSlot;
+                swapPendingSlot = 0;
+                selectedLobbySlot = slotNum;
+                SendHostSlotAction("swap", s1, slotNum);
+                return;
+            }
+            swapPendingSlot = 0;
+            selectedLobbySlot = slotNum;
+            RefreshWar3LobbyHostSlotVisuals();
+        }
+
+        private static void RefreshWar3LobbyHostSlotVisuals()
+        {
+            if (war3LobbyHostWin == null) return;
+            for (int i = 0; i < 10; i++)
+            {
+                int sNum = i + 1;
+                if (lobbySlotBorders[i] != null)
+                {
+                    bool isSel = (sNum == selectedLobbySlot);
+                    bool isSwapSrc = (sNum == swapPendingSlot);
+                    lobbySlotBorders[i].Background = isSwapSrc ? HexBrush("#3B1D5E") : (isSel ? HexBrush("#1E293B") : HexBrush("#111726"));
+                    lobbySlotBorders[i].BorderBrush = isSwapSrc ? HexBrush("#C084FC") : (isSel ? HexBrush("#FBBF24") : HexBrush("#24304C"));
+                }
+                if (lblLobbySlotTexts[i] != null)
+                {
+                    lblLobbySlotTexts[i].Text = currentLobbySlotLabels[i];
+                    lblLobbySlotTexts[i].Foreground = HexBrush(currentLobbySlotHex[i]);
+                }
+            }
+            if (lblLobbySelectedSlotTitle != null)
+            {
+                if (swapPendingSlot > 0)
+                {
+                    lblLobbySelectedSlotTitle.Text = "🔄 Суудал #" + swapPendingSlot + "-тэй солих суудал дээрээ (1..10) дарна уу!";
+                    lblLobbySelectedSlotTitle.Foreground = HexBrush("#C4B5FD");
+                }
+                else
+                {
+                    lblLobbySelectedSlotTitle.Text = "🎯 Сонгосон суудал: #" + selectedLobbySlot + " (" + currentLobbySlotLabels[selectedLobbySlot - 1] + ")";
+                    lblLobbySelectedSlotTitle.Foreground = HexBrush("#FDE68A");
+                }
+            }
+        }
+
+        private static void SendHostSlotAction(string action, int slot, int targetSlot)
+        {
+            if (string.IsNullOrEmpty(currentRoomId) || !isCurrentRoomOwner) return;
+            string rid = currentRoomId;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string body = "{\"action\":\"" + action + "\",\"slot\":" + slot + ",\"target_slot\":" + targetSlot + "}";
+                    string res = ApiRequest("POST", "/api/rooms/" + rid + "/slot", body);
+                    string msg = ExtractJsonString(res, "message");
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (lblLobbyHostStatus != null && !string.IsNullOrEmpty(msg))
+                        {
+                            lblLobbyHostStatus.Text = "✅ " + msg;
+                            lblLobbyHostStatus.Foreground = HexBrush("#34D399");
+                        }
+                        if (lblLobbyStartBtnText != null && action != "start")
+                            lblLobbyStartBtnText.Text = "🚀 START GAME (ТОГЛОЛТ ЭХЛҮҮЛЭХ)";
+                    }));
+                    SyncRoomStateOnceAsync();
+                }
+                catch
+                {
+                    mainWin.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (lblLobbyStartBtnText != null)
+                            lblLobbyStartBtnText.Text = "🚀 START GAME (ТОГЛОЛТ ЭХЛҮҮЛЭХ)";
+                    }));
+                }
+            });
+        }
+
+        private static void UpdateWar3LobbyHostOverlay()
+        {
+            try
+            {
+                IntPtr war3Hwnd;
+                bool war3Fg = IsWarcraftForeground(out war3Hwnd);
+                bool showHostHud = !string.IsNullOrEmpty(currentRoomId)
+                    && isCurrentRoomOwner
+                    && currentRoomPhase == "LOBBY"
+                    && !bridgeW3gsInGame
+                    && !IsMatchActuallyStarted()
+                    && (bridgeW3gsConnected || currentRoomMyW3gsConnected)
+                    && war3Fg;
+
+                if (!showHostHud)
+                {
+                    if (war3LobbyHostWin != null && war3LobbyHostWin.IsVisible)
+                        war3LobbyHostWin.Hide();
+                    return;
+                }
+
+                EnsureWar3LobbyHostOverlayCreated();
+                if (war3LobbyHostWin == null) return;
+
+                if (lblLobbyStartBtnText != null && currentRoomPhase == "LOBBY")
+                    lblLobbyStartBtnText.Text = "🚀 START GAME (ТОГЛОЛТ ЭХЛҮҮЛЭХ)";
+
+                RefreshWar3LobbyHostSlotVisuals();
+
+                if (war3Hwnd != IntPtr.Zero && fnGetRect != null && fnCliToScr != null)
+                {
+                    RECT rc;
+                    if (fnGetRect(war3Hwnd, out rc))
+                    {
+                        POINT pt = new POINT { X = 0, Y = 0 };
+                        fnCliToScr(war3Hwnd, ref pt);
+                        int cW = rc.Right - rc.Left;
+                        int cH = rc.Bottom - rc.Top;
+                        if (cW >= 600 && cH >= 450)
+                        {
+                            double dpiScaleX = 1.0, dpiScaleY = 1.0;
+                            try
+                            {
+                                PresentationSource src = PresentationSource.FromVisual(mainWin);
+                                if (src != null && src.CompositionTarget != null)
+                                {
+                                    dpiScaleX = src.CompositionTarget.TransformFromDevice.M11;
+                                    dpiScaleY = src.CompositionTarget.TransformFromDevice.M22;
+                                }
+                            }
+                            catch { }
+                            double dipLeft = pt.X * dpiScaleX;
+                            double dipTop = pt.Y * dpiScaleY;
+                            double dipW = cW * dpiScaleX;
+                            double dipH = cH * dpiScaleY;
+                            war3LobbyHostWin.Left = Math.Max(10, dipLeft + dipW - war3LobbyHostWin.Width - (dipW * 0.025));
+                            war3LobbyHostWin.Top = Math.Max(10, dipTop + dipH - war3LobbyHostWin.Height - (dipH * 0.085));
+                        }
+                    }
+                }
+
+                if (!war3LobbyHostWin.IsVisible)
+                    war3LobbyHostWin.Show();
             }
             catch { }
         }
@@ -4774,13 +5333,19 @@ namespace MongolRanger
             if (string.IsNullOrEmpty(currentRoomId) || !isCurrentRoomOwner) return;
             try
             {
+                if (currentRoomMyW3gsConnected && IsWarcraftRunning() && currentRoomPhase == "LOBBY")
+                {
+                    ApiRequest("POST", "/api/rooms/" + currentRoomId + "/start", "{}");
+                    SyncRoomStateOnceAsync();
+                    return;
+                }
                 string res = ApiRequest("POST", "/api/rooms/" + currentRoomId + "/launch", "{}");
                 int sig = ExtractJsonInt(res, "launch_signal", (int)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds);
                 lastHandledLaunchSignal = sig;
                 if (sig > 0) handledLaunchSignals.Add(sig);
                 currentRoomLaunchSig = sig;
                 hasLaunchedWar3InCurrentRoom = true;
-                LaunchWarcraftIfNotRunning(true);
+                LaunchWarcraftWithLoadingOverlay(true);
                 SyncRoomStateOnceAsync();
             }
             catch (Exception ex)
@@ -6027,6 +6592,53 @@ namespace MongolRanger
                     bool myDisc = (ExtractJsonInt(st, "my_disconnected", 0) == 1) || st.Contains("\"my_disconnected\":true") || st.Contains("\"my_disconnected\": true");
                     bool rejoinReady = ExtractJsonInt(st, "rejoin_ready", 0) == 1;
 
+                    // Parse 10 Lobby Slots & Connected W3GS Players for Host Mouse Slot Controls
+                    Dictionary<int, string> sidToPlayerName = new Dictionary<int, string>();
+                    List<string> pObjs = ExtractJsonObjectArray(st, "players");
+                    foreach (string pStr in pObjs)
+                    {
+                        string pName = ExtractJsonString(pStr, "name");
+                        int pSid = ExtractJsonInt(pStr, "sid", -1);
+                        bool pConn = (ExtractJsonInt(pStr, "connected", 0) == 1) || pStr.Contains("\"connected\":true") || pStr.Contains("\"connected\": true");
+                        if (!string.IsNullOrEmpty(pName) && pSid >= 0 && pSid < 10 && pConn)
+                            sidToPlayerName[pSid] = pName;
+                    }
+                    List<string> sObjs = ExtractJsonObjectArray(st, "slots");
+                    string[] parsedSlotLabels = new string[10];
+                    string[] parsedSlotHex = new string[10];
+                    for (int si = 0; si < 10; si++)
+                    {
+                        string lbl = "🔓 Open";
+                        string hex = "#34D399";
+                        if (sidToPlayerName.ContainsKey(si))
+                        {
+                            string pn = sidToPlayerName[si];
+                            bool isH = string.Equals(pn, hostName, StringComparison.OrdinalIgnoreCase);
+                            lbl = (isH ? "👑 " : "👤 ") + pn;
+                            hex = isH ? "#FBBF24" : "#FFFFFF";
+                        }
+                        else if (si < sObjs.Count)
+                        {
+                            string sObj = sObjs[si];
+                            int sStat = ExtractJsonInt(sObj, "status", ExtractJsonInt(sObj, "slot_status", 0));
+                            int sComp = ExtractJsonInt(sObj, "computer", 0);
+                            int sCtype = ExtractJsonInt(sObj, "difficulty", ExtractJsonInt(sObj, "comp_type", 1));
+                            if (sStat == 1)
+                            {
+                                lbl = "🔒 Closed";
+                                hex = "#94A3B8";
+                            }
+                            else if (sStat == 2 && sComp == 1)
+                            {
+                                if (sCtype == 0) { lbl = "🤖 Easy (853g)"; hex = "#38BDF8"; }
+                                else if (sCtype == 2) { lbl = "🤖 Insane (853g)"; hex = "#F87171"; }
+                                else { lbl = "🤖 Normal (853g)"; hex = "#FBBF24"; }
+                            }
+                        }
+                        parsedSlotLabels[si] = (si + 1) + ". " + lbl;
+                        parsedSlotHex[si] = hex;
+                    }
+
                     // Parse members array safely using ExtractJsonObjectArray
                     List<RoomMemberItem> parsedMembers = new List<RoomMemberItem>();
                     List<string> mObjs = ExtractJsonObjectArray(st, "members");
@@ -6134,8 +6746,14 @@ namespace MongolRanger
                         currentRoomRejoinReady = rejoinReady;
                         if (myW3gsConn || myDisc || IsWarcraftRunning())
                             hasLaunchedWar3InCurrentRoom = true;
+                        for (int si = 0; si < 10; si++)
+                        {
+                            currentLobbySlotLabels[si] = parsedSlotLabels[si];
+                            currentLobbySlotHex[si] = parsedSlotHex[si];
+                        }
 
                         UpdateInnerRoomVisibility();
+                        UpdateWar3LobbyHostOverlay();
                         lblSetRoomCodeText.Text = !isCurrentRoomOwner
                             ? (isLockedInt == 1 ? "🔒 Кодтой Өрөө" : "🔓 Нээлттэй Өрөө")
                             : (string.IsNullOrEmpty(currentRoomCode) ? "🔓 Код Хийх (Нээлттэй)" : "🔒 Код: " + currentRoomCode + " (Солих)");
@@ -6179,7 +6797,7 @@ namespace MongolRanger
                             {
                                 hasLaunchedWar3InCurrentRoom = true;
                                 PlayNotifySound();
-                                LaunchWarcraftIfNotRunning(true);
+                                LaunchWarcraftWithLoadingOverlay(true);
                                 UpdateInnerRoomVisibility();
                             }
                         }
@@ -7500,6 +8118,9 @@ namespace MongolRanger
                                             bridgeW3gsInGame = false;
                                             bridgeLagDialogOpen = false;
                                             inGameChatActive = false;
+                                            SyncRoomStateOnceAsync();
+                                            if (mainWin != null)
+                                                mainWin.Dispatcher.BeginInvoke(new Action(() => UpdateWar3LobbyHostOverlay()));
                                         }
                                         else if (pid == 0x23 || pid == 0x26 || pid == 0x27) // W3GS_GAMELOADED_SELF / ACTION / KEEPALIVE -> in 3D Match
                                         {
@@ -7571,6 +8192,13 @@ namespace MongolRanger
                         bridgeLagDialogOpen = false;
                         inGameChatActive = false;
                         enterKeyPhysicallyDown = false;
+                        if (mainWin != null)
+                            mainWin.Dispatcher.BeginInvoke(new Action(() => UpdateWar3LobbyHostOverlay()));
+                        SyncRoomStateOnceAsync();
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            try { Thread.Sleep(700); SyncRoomStateOnceAsync(); } catch { }
+                        });
                     }
                 }
             }
@@ -7906,6 +8534,7 @@ namespace MongolRanger
 
         private static bool IsKnownMongolRangerCommand(string cmd)
         {
+            if (bridgeW3gsInGame || currentRoomPhase != "LOBBY") return false;
             if (string.IsNullOrEmpty(cmd) || cmd.Length < 2) return false;
             char pfx = cmd[0];
             if (pfx != '-' && pfx != '!' && pfx != '/') return false;
@@ -7914,13 +8543,7 @@ namespace MongolRanger
             string[] parts = body.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return false;
             string head = parts[0];
-            return head == "rmk" || head == "remake" || head == "warda" ||
-                   head == "gg" || head == "ff" || head == "forfeit" || head == "surrender" ||
-                   head == "addtime" || head == "time" || head == "wait" ||
-                   head == "help" || head == "zaavar" || head == "cmd" || head == "commands" ||
-                   head == "start" || head == "1v1" || head == "2v2" || head == "3v3" || head == "4v4" || head == "5v5" ||
-                   head == "close" || head == "closeall" || head == "open" || head == "openall" || head == "swap" ||
-                   head == "easy" || head == "normal" || head == "insane" || head == "comp" || head == "computer" || head == "hasah";
+            return head == "swap";
         }
 
         private static void SendInGameCommandToServer(string cmdText)
@@ -8047,28 +8670,8 @@ namespace MongolRanger
                     IntPtr war3Hwnd;
                     bool war3Fg = IsWarcraftForeground(out war3Hwnd);
 
-                    // Catch blind "-addtime" typing while the Waiting for players dialog is open (even if chat box is blocked by modal)
-                    if (war3Fg && !string.IsNullOrEmpty(currentRoomId) &&
-                        (bridgeLagDialogOpen || currentRoomPhase == "WAITING" || currentRoomPhase == "FROZEN" || !string.IsNullOrEmpty(currentRoomAbsent)))
-                    {
-                        if (info.vkCode >= 0x41 && info.vkCode <= 0x5A)
-                        {
-                            char ch = (char)(info.vkCode + 32); // 'a'..'z'
-                            waitTypedBuffer += ch;
-                            if (waitTypedBuffer.Length > 16)
-                                waitTypedBuffer = waitTypedBuffer.Substring(waitTypedBuffer.Length - 16);
-                            if (waitTypedBuffer.EndsWith("addtime") && (DateTime.UtcNow - lastBlindAddtimeUtc).TotalSeconds > 1.5)
-                            {
-                                waitTypedBuffer = "";
-                                lastBlindAddtimeUtc = DateTime.UtcNow;
-                                ExtendRoomWaitTime();
-                            }
-                        }
-                    }
-
-                    // Universal in-game command bridge: guarantees -rmk, -gg, -addtime, -1v1..-4v4 work in 1v1/2v2/3v3/4v4
-                    // even when plain Enter ([Allies] chat with 0 human teammates in 1v1) does not emit W3GS 0x28.
-                    if (war3Fg && !string.IsNullOrEmpty(currentRoomId))
+                    // Lobby-only "-swap" command bridge (never active during 3D gameplay so -cam, ESC, -clear, etc. work 100% natively)
+                    if (war3Fg && !bridgeW3gsInGame && currentRoomPhase == "LOBBY" && !string.IsNullOrEmpty(currentRoomId))
                     {
                         if (info.vkCode == 0xBD || info.vkCode == 0x6D || info.vkCode == 0xBF || info.vkCode == 0x6F)
                         {

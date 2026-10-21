@@ -489,6 +489,7 @@ class W3GSRoom:
         self.map_width = bytes(map_meta["map_width"]) if map_meta and "map_width" in map_meta else LOD_MAP_WIDTH
         self.map_height = bytes(map_meta["map_height"]) if map_meta and "map_height" in map_meta else LOD_MAP_HEIGHT
         self.slots = [dict(s) for s in map_meta["slots"]] if map_meta and map_meta.get("slots") else default_lod_slots()
+        self.default_slots = [dict(s) for s in self.slots]
         self.peers: dict[str, RoomPeer] = {}
         self.vhost_pid = 11
         self.absent: str | None = None
@@ -521,7 +522,7 @@ class W3GSRoom:
         self.kicked_players: set[str] = set()
         self.disconnected_players: set[str] = set()
         self.no_leavers: bool = False
-        self.auto_fill_comp: bool = True
+        self.auto_fill_comp: bool = False
         self.wait_started_at: float = 0.0
         self.wait_duration_sec: float = 180.0
         self.addtime_count: int = 0
@@ -553,19 +554,20 @@ class W3GSRoom:
             return
         self.remake_in_progress = True
         try:
+            elapsed_match = (time.time() - self.match_started_at) if self.match_started_at > 0 else 0.0
             has_kda = any(
                 (st.get("kills", 0) > 0 or st.get("deaths", 0) > 0 or st.get("assists", 0) > 0)
                 for st in self.player_stats.values()
             )
-            if (score_winner_team is not None or has_kda) and not self.match_scored:
+            if (score_winner_team is not None or (has_kda and elapsed_match >= 300.0)) and not self.match_scored:
                 if score_winner_team is not None:
                     self.winner_team = score_winner_team
                 now_end = time.time()
                 for pname, st in self.player_stats.items():
                     if (
                         pname in self.peers
-                        or self.initial_player_count <= 4
-                        or (now_end - float(st.get("quit_at", 0.0))) <= 180.0
+                        or self.initial_player_count < 10
+                        or (now_end - float(st.get("quit_at", 0.0))) < 300.0
                     ):
                         st["abandoned"] = False
                 if self.on_match_complete_cb is not None:
@@ -574,9 +576,6 @@ class W3GSRoom:
                     except Exception:
                         pass
 
-            await self.send_all_chat(
-                f"|cFF00FF88[MongolRanger]|r {reason_msg} — Өрөө LAN дээр дахин бэлэн боллоо! (F10 -> E -> Q дараад LAN дотроос өрөө рүүгээ шууд орно уу)"
-            )
             # Disconnect any remaining in-game W3GS sockets so Warcraft III returns players to the LAN screen cleanly
             old_peers = list(self.peers.values())
             for p in old_peers:
@@ -605,6 +604,7 @@ class W3GSRoom:
             self.addtime_count = 0
             self.host_drop_unlocked_sent = False
             self.warned_20s_addtime = False
+            self.kicked_players.clear()
             self.disconnected_players.clear()
             self.rmk_votes.clear()
             self.ff_votes = {0: set(), 1: set()}
@@ -625,7 +625,8 @@ class W3GSRoom:
             self.kill_dedup.clear()
             self.assist_dedup.clear()
             self.player_stats.clear()
-            self.slots = default_lod_slots()
+            self.auto_fill_comp = False
+            self.slots = [dict(s) for s in self.default_slots]
             self.peers.clear()
             self.event("room_reset_for_remake", reason=reason_msg, new_host_counter=self.host_counter)
             if self.on_room_remake_cb is not None:
@@ -797,7 +798,7 @@ class W3GSRoom:
                 if name != self.absent and peer.writer is not None and peer.loaded:
                     await self.send(peer, lag(absent_peer.pid, False))
                     await self.send(peer, lag(absent_peer.pid, True, self._lag_ms_for(name, rem)))
-        msg = f"⏳ «{sender_name}» -addtime бичиж хүлээх хугацааг +1 минутаар (+60 сек) сунгалаа! ({self.addtime_count}/{self.addtime_max} эрх ашигласан • Нийт үлдсэн: {rem} сек)"
+        msg = f"⏳ «{sender_name}» хүлээх хугацааг +1 минутаар (+60 сек) сунгалаа! ({self.addtime_count}/{self.addtime_max} эрх ашигласан • Нийт үлдсэн: {rem} сек)"
         await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r {msg}")
         self.event("wait_time_extended", by=sender_name, used=self.addtime_count, remaining_sec=rem)
         return True, msg, rem
@@ -1103,8 +1104,8 @@ class W3GSRoom:
                     for pname, st in self.player_stats.items():
                         if (
                             pname in self.peers
-                            or self.initial_player_count <= 4
-                            or (now_win - float(st.get("quit_at", 0.0))) <= 180.0
+                            or self.initial_player_count < 10
+                            or (now_win - float(st.get("quit_at", 0.0))) < 300.0
                         ):
                             st["abandoned"] = False
                     if self.on_match_complete_cb is not None and not self.match_scored:
@@ -1173,29 +1174,30 @@ class W3GSRoom:
         return raw_body
 
     async def _confirm_quit_leaver(self, quit_name: str, hc: int):
-        """Delays mid-game Quit leaver penalty by 30s so end-of-game F10->E->Q exits are never falsely penalized."""
-        await asyncio.sleep(30.0)
-        if self.host_counter != hc or self.phase == "LOBBY" or self.match_scored or self.winner_team is not None:
-            st = self.player_stats.get(quit_name)
-            if st is not None:
-                st["abandoned"] = False
-            return
-        t0_now = sum(
-            1 for px in self.peers.values()
-            if px.writer is not None and 0 <= px.sid < len(self.slots) and int(self.slots[px.sid].get("team", 0)) == 0
-        )
-        t1_now = sum(
-            1 for px in self.peers.values()
-            if px.writer is not None and 0 <= px.sid < len(self.slots) and int(self.slots[px.sid].get("team", 0)) == 1
-        )
-        if t0_now == 0 or t1_now == 0:
-            st = self.player_stats.get(quit_name)
-            if st is not None:
-                st["abandoned"] = False
-            return
-        await self.send_all_chat(
-            f"|cFFFF5555[MongolRanger]|r «{quit_name}» тоглолтоос өөрөө гарсан (Quit) тул LEAVER боллоо. Тоглолт үргэлжилж байна!"
-        )
+        """Confirm leaver ONLY if remaining players continue playing for 5 full minutes (300s) after F10->E->Q."""
+        for _ in range(60):
+            await asyncio.sleep(5.0)
+            if self.host_counter != hc or self.phase == "LOBBY" or self.match_scored or self.winner_team is not None:
+                st = self.player_stats.get(quit_name)
+                if st is not None:
+                    st["abandoned"] = False
+                return
+            t0_chk = sum(
+                1 for px in self.peers.values()
+                if px.writer is not None and 0 <= px.sid < len(self.slots) and int(self.slots[px.sid].get("team", 0)) == 0
+            )
+            t1_chk = sum(
+                1 for px in self.peers.values()
+                if px.writer is not None and 0 <= px.sid < len(self.slots) and int(self.slots[px.sid].get("team", 0)) == 1
+            )
+            if t0_chk == 0 or t1_chk == 0:
+                st = self.player_stats.get(quit_name)
+                if st is not None:
+                    st["abandoned"] = False
+                return
+        st = self.ensure_player_stat(quit_name)
+        st["abandoned"] = True
+        self.kicked_players.add(quit_name)
         self.event("player_quit_leaver", name=quit_name)
         self.last_drop_reason = "quit"
         if self.on_player_dropped_cb is not None:
@@ -1322,6 +1324,92 @@ class W3GSRoom:
         s["difficulty"] = 1
         s["locked"] = False
         return True
+
+    def _set_slot_closed(self, sid: int) -> bool:
+        if not (0 <= sid < len(self.slots)) or self._is_human_slot(sid):
+            return False
+        s = self.slots[sid]
+        s["pid"] = 0
+        s["download"] = 255
+        s["status"] = 1
+        s["computer"] = 0
+        s["difficulty"] = 1
+        s["locked"] = True
+        return True
+
+    async def update_map_meta(self, map_meta: dict):
+        if self.phase != "LOBBY" or not map_meta:
+            return
+        self.map_path = map_meta.get("map_path", self.map_path)
+        if "map_size" in map_meta:
+            self.map_size = bytes(map_meta["map_size"])
+            self.map_size_int = struct.unpack("<I", self.map_size)[0]
+        if "map_info" in map_meta:
+            self.map_info = bytes(map_meta["map_info"])
+        if "map_crc" in map_meta:
+            self.map_crc = bytes(map_meta["map_crc"])
+        if "map_sha1" in map_meta:
+            self.map_sha1 = bytes(map_meta["map_sha1"])
+        if "map_width" in map_meta:
+            self.map_width = bytes(map_meta["map_width"])
+        if "map_height" in map_meta:
+            self.map_height = bytes(map_meta["map_height"])
+        if map_meta.get("slots"):
+            self.default_slots = [dict(s) for s in map_meta["slots"]]
+        if not self.peers:
+            self.slots = [dict(s) for s in self.default_slots]
+            self.host_counter = ((self.host_counter + 1) & 0x0FFFFFFF) or 1
+        else:
+            for peer in list(self.peers.values()):
+                if peer.writer is not None:
+                    await self.send(peer, send_w3gs_mapcheck(self.map_path, self.map_size, self.map_info, self.map_crc, self.map_sha1))
+            await self.send_all_slot_info()
+
+    async def host_set_slot(self, actor_name: str, action: str, slot: int = 0, target_slot: int = 0) -> tuple[bool, str]:
+        if self.phase != "LOBBY":
+            return False, "Зөвхөн Лобби дотор суудал тохируулна."
+        if not self._is_effective_host(actor_name):
+            return False, "Зөвхөн Host суудал тохируулах эрхтэй."
+        act = (action or "").strip().lower()
+        sid = slot - 1
+        if act == "start":
+            started = await self.start_game(force=True)
+            return started, "started" if started else "not_started"
+        if act == "swap":
+            tsid = target_slot - 1
+            if 0 <= sid < len(self.slots) and 0 <= tsid < len(self.slots) and sid != tsid:
+                await self.swap_slots(sid, tsid)
+                return True, f"Slot {slot} <-> {target_slot}"
+            return False, "Invalid swap slots"
+        if act in ("1v1", "2v2", "3v3", "4v4"):
+            await self.apply_team_size_preset(int(act[0]), difficulty=1)
+            return True, act
+        if act in ("5v5", "openall", "clear"):
+            for i in range(len(self.slots)):
+                self._set_slot_open(i)
+            await self.send_all_slot_info()
+            return True, "5v5"
+        if not (0 <= sid < len(self.slots)):
+            return False, "Invalid slot"
+        # If a non-host human player is occupying this slot and the Host sets it to Closed or Computer, kick that player first
+        if self._is_human_slot(sid) and act in ("closed", "close", "easy", "normal", "insane"):
+            occ = next((p for p in self.peers.values() if p.sid == sid), None)
+            if occ and not self._is_effective_host(occ.name):
+                await self.kick_player(occ.name, "Host суудлыг хаалаа")
+        if act == "open":
+            self._set_slot_open(sid)
+        elif act in ("closed", "close"):
+            self._set_slot_closed(sid)
+        elif act == "easy":
+            self._set_slot_computer(sid, difficulty=0, locked=True)
+        elif act == "normal":
+            self._set_slot_computer(sid, difficulty=1, locked=True)
+        elif act in ("insane", "hard"):
+            self._set_slot_computer(sid, difficulty=2, locked=True)
+        else:
+            return False, "Unknown action"
+        await self.send_all_slot_info()
+        return True, act
 
     def _parse_slot_targets(self, args: list[str]) -> list[int]:
         out: list[int] = []
@@ -1527,24 +1615,12 @@ class W3GSRoom:
                         self.event("wait_connection_refreshed", absent=self.absent, remaining_sec=rem)
                 if 0 < rem <= 22 and not self.warned_20s_addtime:
                     self.warned_20s_addtime = True
-                    warn_20 = f"⚠️ «{self.absent}» хүлээх хугацаа дуусахад {rem} секунд үлдлээ! -addtime командаар +1 минут сунгана уу! ({self.addtime_count}/{self.addtime_max})"
-                    await self.send_all_chat(
-                        f"|cFFFF3333[MongolRanger]|r \"{self.absent}\" huleeh hugatsaa duusahad {rem} sec uldlee!\n"
-                        f"|cFFFFCC00>>> -addtime commandaar 1 minut sungana uu! ({self.addtime_count}/{self.addtime_max}) <<<|r\n"
-                        f"|cFF00FF88[MongolRanger] Uldsen hugatsaa: {rem} sec (-addtime)|r\n"
-                        f"|cFFFFCC00--------------------------------------------------|r\n"
-                        f"|cFFFFCC00--------------------------------------------------|r"
-                    )
+                    warn_20 = f"⚠️ «{self.absent}» хүлээх хугацаа дуусахад {rem} секунд үлдлээ! ({self.addtime_count}/{self.addtime_max})"
                     if self.on_chat_announce_cb is not None:
                         try:
                             self.on_chat_announce_cb(self.room_id, warn_20)
                         except Exception:
                             pass
-                elif rem > 0 and (now - self.last_wait_announce) >= 30.0:
-                    self.last_wait_announce = now
-                    await self.send_all_chat(
-                        f"|cFFFFCC00[MongolRanger]|r \"{self.absent}\" butsaj orohiig huleej baina: {rem} sec uldlee. (-addtime bichij +1 min sungah: {self.addtime_count}/{self.addtime_max})"
-                    )
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, first_packet: bytes, framer: Framer):
         self.ensure_background_tasks()
@@ -1655,24 +1731,6 @@ class W3GSRoom:
                         await self.send(peer, send_w3gs_playerinfo(other_peer.pid, other_peer.name))
                 await self.send(peer, send_w3gs_mapcheck(self.map_path, self.map_size, self.map_info, self.map_crc, self.map_sha1))
                 await self.send_all_slot_info()
-                guide_lines = [
-                    "|cFF00FF88=== [MongolRanger Commandiin Zaavar] ===|r",
-                    "|cFFFFCC00-start|r : Host ene commandig bichij togloomiig ehluulne",
-                    "|cFFFFCC00-1v1  -2v2  -3v3  -4v4|r : Bagiin too taaruulj iluu slot haah (853 gold)",
-                    "|cFFFFCC00-close 2|r / |cFFFFCC00-close 2-5|r / |cFFFFCC00-normal|r / |cFFFFCC00-insane|r : Slot haaj mongo hasah",
-                    "|cFFFFCC00-open 2|r / |cFFFFCC00-openall|r : Slot neeh  |  |cFFFFCC00-swap 2 6|r : Suudal hoorond ni solih",
-                    "|cFFFFCC00-rmk|r : 5 min dotor dahin ehleh (1v1/2v2: 2, 3v3-5v5: 3)  |  |cFFFFCC00-gg|r : Buuj ogoh",
-                    "|cFFFFCC00-addtime|r : Hun garaad huleeh 180 sec-iig +1 minutaar sungana",
-                ]
-                for g_line in guide_lines:
-                    welcome_pkt = send_w3gs_chat_from_host(
-                        self.vhost_pid,
-                        [pid],
-                        16,
-                        b"",
-                        g_line,
-                    )
-                    await self.send(peer, welcome_pkt)
                 self.event("initial_join", name=name, pid=pid, sid=sid, team=self.slots[sid]["team"])
 
             while True:
@@ -1712,28 +1770,12 @@ class W3GSRoom:
                                 if absent_peer and peer.writer is not None:
                                     await self.send(peer, lag(absent_peer.pid, False))
                                     await self.send(peer, lag(absent_peer.pid, True, self._lag_ms_for(peer.name, self.get_wait_remaining_sec())))
-                                pkt = send_w3gs_chat_from_host(
-                                    peer.pid,
-                                    [peer.pid],
-                                    32,
-                                    b"\x00\x00\x00\x00",
-                                    f"|cFFFF5555[MongolRanger]|r Зөвхөн Host ({self.owner_name}) хүлээж буй тоглогчийг Drop хийх эрхтэй!",
-                                )
-                                await self.send(peer, pkt)
                             else:
                                 rem = self.get_wait_remaining_sec()
                                 if rem > 0:
                                     if absent_peer and peer.writer is not None:
                                         await self.send(peer, lag(absent_peer.pid, False))
                                         await self.send(peer, lag(absent_peer.pid, True, self._lag_ms_for(peer.name, rem)))
-                                    pkt = send_w3gs_chat_from_host(
-                                        peer.pid,
-                                        [peer.pid],
-                                        32,
-                                        b"\x00\x00\x00\x00",
-                                        f"|cFFFF5555[MongolRanger]|r Хүлээх хугацаа дуусаагүй байна ({rem} сек үлдсэн)!",
-                                    )
-                                    await self.send(peer, pkt)
                                 else:
                                     await self.drop_absent_player_by_host(peer.name)
                     elif ptype == 0x23:  # GAMELOADED_SELF
@@ -1783,23 +1825,6 @@ class W3GSRoom:
                         if len(p) >= 8 and zlib.crc32(p[8:]) == struct.unpack_from("<I", p, 4)[0]:
                             raw_act = p[8:]
                             self.dbg("act", p=peer.name, hex=raw_act.hex()[:300])
-                            # When a player presses plain Enter (Allies chat) in a 1v1 or 0-ally team,
-                            # Warcraft III 1.26a skips 0x28 W3GS_CHAT_TO_HOST and sends 0x60 (CPlayerChatEvent)
-                            # inside 0x26 W3GS_OUTGOING_ACTION: [0x60][8-byte nettag][null-terminated UTF-8 string].
-                            search_pos = 0
-                            while True:
-                                idx60 = raw_act.find(b"\x60", search_pos)
-                                if idx60 == -1 or idx60 + 10 >= len(raw_act):
-                                    break
-                                if raw_act[idx60 + 9] in (0x2D, 0x21, 0x2F):  # '-', '!', '/'
-                                    nul_pos = raw_act.find(0, idx60 + 9)
-                                    if nul_pos > idx60 + 9 and (nul_pos - (idx60 + 9)) <= 128:
-                                        act_chat = raw_act[idx60 + 9 : nul_pos].decode("utf-8", errors="replace").strip()
-                                        if act_chat.startswith(("-", "!", "/")):
-                                            await self._execute_chat_command(peer, act_chat)
-                                        search_pos = nul_pos + 1
-                                        continue
-                                search_pos = idx60 + 1
                             cleaned = self.extract_and_strip_hero_nt(peer.name, raw_act)
                             if self.phase == "FROZEN":
                                 if b"\x07\x01\0\0\0" in raw_act:
@@ -1884,18 +1909,14 @@ class W3GSRoom:
                             deliberate_quit
                             and self.winner_team is None
                             and self.match_started_at > 0.0
-                            and self.initial_player_count > 4
                             and t0_alive > 0
                             and t1_alive > 0
                         ):
-                            self.kicked_players.add(peer.name)
-                            st = self.ensure_player_stat(peer.name)
-                            st["abandoned"] = True
                             self.spawn(self._confirm_quit_leaver(peer.name, self.host_counter))
                         elif t0_alive == 0 or t1_alive == 0:
                             now_q = time.time()
                             for pst in self.player_stats.values():
-                                if pst.get("abandoned") and (now_q - float(pst.get("quit_at", 0.0))) <= 180.0:
+                                if pst.get("abandoned") and (now_q - float(pst.get("quit_at", 0.0))) < 300.0:
                                     pst["abandoned"] = False
                         if self.phase in ("FROZEN", "WAITING") and not self.disconnected_players:
                             self.phase = "CONTINUING"
@@ -1935,7 +1956,7 @@ class W3GSRoom:
                             try:
                                 self.on_chat_announce_cb(
                                     self.room_id,
-                                    f"⏳ «{peer.name}» тоглолтоос салсан тул 180 секунд (3 минут) хүлээх горим идэвхжлээ! (-addtime бичиж 3 удаа +1 мин сунгах боломжтой)",
+                                    f"⏳ «{peer.name}» тоглолтоос салсан тул 180 секунд (3 минут) хүлээх горим идэвхжлээ!",
                                 )
                             except Exception:
                                 pass
@@ -1976,192 +1997,29 @@ class W3GSRoom:
         return False
 
     async def execute_lobby_slot_command(self, actor_name: str, msg: str) -> tuple[bool, str] | None:
-        if not msg.startswith(("-", "!", "/")):
-            return None
-        parts = msg[1:].split()
-        cmd = parts[0].lower() if parts else ""
-        if not cmd:
-            return None
-        slot_cmds = {
-            "1v1", "2v2", "3v3", "4v4", "5v5",
-            "easy", "normal", "insane", "hard", "comp", "computer", "cpu", "ai", "fill", "gold", "hasah",
-            "close", "c", "closeall", "haah",
-            "open", "o", "openall", "clear", "neeh",
-            "nofill", "fullgold",
-        }
-        if cmd not in slot_cmds:
-            return None
-        is_host = self._is_effective_host(actor_name)
-        if not is_host:
-            err = f"Зөвхөн өрөөний Host ({self.owner_name}) суудал хаах / Computer оруулах эрхтэй!"
-            await self.send_all_chat(f"|cFFFF5555[MongolRanger]|r Zovhon Host ({self.owner_name}) slot haah / Computer oruulah erhtei!")
-            return False, err
-        if self.phase != "LOBBY":
-            err = "Суудал тохируулах командыг зөвхөн тоглолт эхлэхээс өмнө Лобби дотор ашиглана!"
-            await self.send_all_chat("|cFFFF5555[MongolRanger]|r Slot tohiruulah commandiig zovhon Lobby dotor ashiglana!")
-            return False, err
-
-        now_m = time.monotonic()
-        dedup_key = (actor_name.lower(), f"slot:{msg.strip().lower()}")
-        if now_m - self._cmd_dedup.get(dedup_key, 0.0) < 1.2:
-            return True, ""
-        self._cmd_dedup[dedup_key] = now_m
-
-        args_low = [a.lower() for a in parts[1:]]
-        if cmd == "easy" or "easy" in args_low:
-            diff = 0
-            diff_label = "Easy"
-        elif cmd in ("insane", "hard") or "insane" in args_low or "hard" in args_low:
-            diff = 2
-            diff_label = "Insane"
-        else:
-            diff = 1
-            diff_label = "Normal"
-
-        if cmd in ("1v1", "2v2", "3v3", "4v4"):
-            per_team = int(cmd[0])
-            self.auto_fill_comp = True
-            await self.apply_team_size_preset(per_team, difficulty=diff)
-            rep = f"{per_team}v{per_team} горим: Илүү суудлуудад Computer ({diff_label}) оруулж хаалаа (гарааны мөнгө: 853 gold)!"
-            await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r {per_team}v{per_team} mode: Iluu suudluudad Computer ({diff_label}) oruulj haalaa (853 gold)!")
-            return True, rep
-
-        if cmd in ("5v5", "openall", "clear") or (cmd in ("open", "o", "neeh") and not self._parse_slot_targets(parts[1:])):
-            for sid in range(len(self.slots)):
-                self._set_slot_open(sid)
-            await self.send_all_slot_info()
-            rep = "Бүх хоосон суудлыг нээлээ (5v5 Open)."
-            await self.send_all_chat("|cFF00FF88[MongolRanger]|r Buh hooson suudliig neelee (5v5 Open).")
-            return True, rep
-
-        if cmd in ("open", "o", "neeh"):
-            targets = self._parse_slot_targets(parts[1:])
-            opened = [sid + 1 for sid in targets if self._set_slot_open(sid)]
-            await self.send_all_slot_info()
-            if opened:
-                s_lbl = ", ".join(str(x) for x in opened)
-                rep = f"Суудал #{s_lbl} нээгдлээ (Open)."
-                await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r Slot #{s_lbl} neegdlee (Open).")
-            else:
-                rep = "Нээх суудлын дугаараа бичнэ үү (жишээ нь: -open 2 эсвэл -openall)."
-                await self.send_all_chat("|cFFFFCC00[MongolRanger]|r Neeh slot dugaaraa bichne uu (jishee ni: -open 2 esvel -openall).")
-            return True, rep
-
-        if cmd in ("nofill", "fullgold"):
-            self.auto_fill_comp = False
-            for sid in range(len(self.slots)):
-                self._set_slot_open(sid)
-            await self.send_all_slot_info()
-            rep = "Автомат Computer хаалтыг унтраалаа (хоосон суудлууд Open хэвээр эхэлнэ)."
-            await self.send_all_chat("|cFFFFCC00[MongolRanger]|r Auto Computer haaltiig untraalaa (hooson slot Open heveer ehelne).")
-            return True, rep
-
-        # Remaining commands: easy, normal, insane, hard, comp, computer, cpu, ai, fill, gold, hasah, close, c, closeall, haah
-        self.auto_fill_comp = True
-        targets = self._parse_slot_targets(parts[1:])
-        lock_flag = cmd in ("close", "c", "closeall", "haah") or bool(targets)
-        if targets:
-            changed = [sid + 1 for sid in targets if self._set_slot_computer(sid, difficulty=diff, locked=lock_flag)]
-            await self.send_all_slot_info()
-            if changed:
-                s_lbl = ", ".join(str(x) for x in changed)
-                rep = f"Суудал #{s_lbl}-д Computer ({diff_label}) оруулж хаалаа (гарааны мөнгө хасагдана)!"
-                await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r Slot #{s_lbl}-d Computer ({diff_label}) oruulj haalaa (mongo hasagdana)!")
-            else:
-                rep = "Уг суудалд тоглогч сууж байна (эсвэл буруу суудлын дугаар байна: 1-10)."
-                await self.send_all_chat("|cFFFFCC00[MongolRanger]|r Ug suudald toglogch suuj baina (esvel 1-10 hoorond dugaar bichne uu).")
-            return True, rep
-        else:
-            changed = [sid + 1 for sid in range(len(self.slots)) if self._set_slot_computer(sid, difficulty=diff, locked=lock_flag)]
-            await self.send_all_slot_info()
-            rep = f"Бүх хоосон суудалд Computer ({diff_label}) оруулж хаалаа (гарааны мөнгө: 853 gold)!"
-            await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r Buh hooson suudald Computer ({diff_label}) oruulj haalaa (853 gold)!")
-            return True, rep
+        return None
 
     async def _execute_chat_command(self, peer: RoomPeer, msg: str) -> bool:
-        if not msg.startswith(("-", "!", "/")):
+        if self.phase != "LOBBY" or not msg.startswith(("-", "!", "/")):
             return False
         parts = msg[1:].split()
         cmd = parts[0].lower() if parts else ""
-        if not cmd:
+        if cmd != "swap":
             return False
         now_m = time.monotonic()
         dedup_key = (peer.name.lower(), msg.strip().lower()[:32])
         if now_m - self._cmd_dedup.get(dedup_key, 0.0) < 0.8:
             return True
         self._cmd_dedup[dedup_key] = now_m
-        is_host = self._is_effective_host(peer.name)
-
-        if cmd in ("help", "zaavar", "cmd", "commands"):
-            await self.send_all_chat(
-                "|cFF00FF88=== [MongolRanger Commandiin Zaavar] ===|r\n"
-                "|cFFFFCC00-start|r : Host togloomiig ehluulne  |  |cFFFFCC00-1v1 -2v2 -3v3 -4v4|r : Iluu slot haah (853g)\n"
-                "|cFFFFCC00-close 2|r / |cFFFFCC00-close 2-5|r / |cFFFFCC00-normal|r / |cFFFFCC00-insane|r : Slot haaj Computer oruulah\n"
-                "|cFFFFCC00-open 2|r / |cFFFFCC00-openall|r : Slot neeh  |  |cFFFFCC00-swap 2 6|r : Suudal solih\n"
-                "|cFFFFCC00-rmk|r (5m dotor: 1v1/2v2 2, 3v3-5v5 3)  |  |cFFFFCC00-gg|r (Buuj ogoh)  |  |cFFFFCC00-addtime|r (+1 min huleeh)"
-            )
+        if not self._is_effective_host(peer.name):
             return True
-
-        slot_res = await self.execute_lobby_slot_command(peer.name, msg)
-        if slot_res is not None:
-            return True
-
-        if cmd in ("start", "s", "go"):
-            if not is_host:
-                await self.send_all_chat(f"|cFFFF5555[MongolRanger]|r Zovhon Host ({self.owner_name}) -start commandaar togloomiig ehluuleh erhtei!")
-                return True
-            await self.start_game(force=True)
-            return True
-
-        if cmd == "swap":
-            if self.phase != "LOBBY":
-                await self.send_all_chat("|cFFFF5555[MongolRanger]|r -swap commandiig zovhon Lobby dotor ashiglana!")
-                return True
-            if not is_host:
-                await self.send_all_chat(f"|cFFFF5555[MongolRanger]|r Zovhon Host ({self.owner_name}) -swap commandaar suudal solih erhtei!")
-                return True
-            if len(parts) >= 3:
-                try:
-                    s1, s2 = int(parts[1]) - 1, int(parts[2]) - 1
-                    await self.swap_slots(s1, s2)
-                    await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r Host \"{peer.name}\" {parts[1]}-r ba {parts[2]}-r suudliig soliloo (-swap {parts[1]} {parts[2]}).")
-                except ValueError:
-                    await self.send_all_chat("|cFFFF5555[MongolRanger]|r Suudal solih jishee: -swap 2 6")
-            else:
-                await self.send_all_chat("|cFFFF5555[MongolRanger]|r Suudal solih jishee: -swap 2 6")
-            return True
-
-        if cmd in ("addtime", "time", "wait", "extend"):
-            if not self.absent and self.phase == "CONTINUING":
-                # Allow LoD built-in -addtime (skill picking timer +60s) to work without showing a disconnect-wait error
-                return False
-            ok, reply_msg, _ = await self.add_wait_time(peer.name)
-            if not ok:
-                await self.send_all_chat(f"|cFFFF5555[MongolRanger]|r {reply_msg}")
-            elif self.on_chat_announce_cb is not None:
-                try:
-                    self.on_chat_announce_cb(self.room_id, reply_msg)
-                except Exception:
-                    pass
-            return True
-
-        if cmd in ("rmk", "remake", "re", "warda"):
-            await self.vote_remake(peer.name)
-            return True
-
-        if cmd in ("gg", "ff", "forfeit", "surrender"):
-            await self.vote_forfeit(peer.name)
-            return True
-
-        if cmd == "hcl" and len(parts) >= 2:
-            if not is_host:
-                await self.send_all_chat(f"|cFFFF5555[MongolRanger]|r Зөвхөн Host ({self.owner_name}) HCL тохируулах эрхтэй!")
-                return True
-            self.hcl = parts[1].lower()
-            await self.send_all_chat(f"|cFF00FF88[MongolRanger]|r HCL mode: {self.hcl}")
-            return True
-
-        return False
+        if len(parts) >= 3:
+            try:
+                s1, s2 = int(parts[1]) - 1, int(parts[2]) - 1
+                await self.swap_slots(s1, s2)
+            except ValueError:
+                pass
+        return True
 
     async def _handle_chat_packet(self, peer: RoomPeer, p: bytes):
         if len(p) < 6:
@@ -2181,23 +2039,27 @@ class W3GSRoom:
                 if new_sid >= 0:
                     await self.swap_slots(peer.sid, new_sid)
             return
-        if flag == 0x14 and idx < len(p):  # CTH_HANDICAPCHANGE (Host's clickable 100%/90%/80%/70%/60%/50% dropdown in Lobby!)
+        if flag == 0x14 and idx < len(p):  # CTH_HANDICAPCHANGE (Host's clickable 100%/90%/80%/70%/60%/50% dropdown in Lobby)
             if self.phase == "LOBBY" and self._is_effective_host(peer.name):
                 h_val = p[idx]
                 if 0 <= peer.sid < len(self.slots):
-                    self.slots[peer.sid]["handicap"] = 100  # Always keep Host's actual HP at 100%
+                    self.slots[peer.sid]["handicap"] = 100
                 if h_val == 90:
-                    await self.execute_lobby_slot_command(peer.name, "-1v1")
+                    await self.apply_team_size_preset(1, difficulty=1)
                 elif h_val == 80:
-                    await self.execute_lobby_slot_command(peer.name, "-2v2")
+                    await self.apply_team_size_preset(2, difficulty=1)
                 elif h_val == 70:
-                    await self.execute_lobby_slot_command(peer.name, "-3v3")
+                    await self.apply_team_size_preset(3, difficulty=1)
                 elif h_val == 60:
-                    await self.execute_lobby_slot_command(peer.name, "-4v4")
+                    await self.apply_team_size_preset(4, difficulty=1)
                 elif h_val == 50:
-                    await self.execute_lobby_slot_command(peer.name, "-insane")
+                    for sid in range(len(self.slots)):
+                        self._set_slot_computer(sid, difficulty=2, locked=True)
+                    await self.send_all_slot_info()
                 elif h_val == 100:
-                    await self.execute_lobby_slot_command(peer.name, "-5v5")
+                    for sid in range(len(self.slots)):
+                        self._set_slot_open(sid)
+                    await self.send_all_slot_info()
             return
         if flag not in (0x10, 0x20):
             return
@@ -2216,7 +2078,7 @@ class W3GSRoom:
             self.event("cheat_chat_blocked", player=peer.name, msg=msg)
             await self.send_all_chat(f"|cFFFF3333[Anti-MapHack]|r {peer.name} хориотой cheat код бичих гэж оролдлоо!")
             return
-        if msg.startswith(("!", "-", "/")):
+        if self.phase == "LOBBY" and msg.startswith(("!", "-", "/")):
             if await self._execute_chat_command(peer, msg):
                 return
         if self.phase == "LOBBY" or flag == 0x10:
@@ -2289,7 +2151,7 @@ class W3GSRoom:
                 await self.send(s_peer, tail)
                 await self.send(s_peer, lag(absent_peer.pid, True, 0))
         await self.send_all_chat(
-            f"|cFFFFCC00[MongolRanger]|r «{self.absent}» салсан тул 180 сек (3 мин) хүлээж байна. (-addtime бичиж +1 мин сунгана)"
+            f"|cFFFFCC00[MongolRanger]|r «{self.absent}» гэнэт салсан тул 180 сек (3 мин) хүлээж байна."
         )
         self.event("survivor_waiting_dialog_shown", survivor=survivor.name, absent=self.absent, wait_sec=180)
 
