@@ -368,20 +368,7 @@ def initialize():
                         time.time(),
                     ),
                 )
-        guide_txt = (
-            "⏱️ [КОМАНДЫН ЗААВАР] -start (Эхлүүлэх) • -1v1 -2v2 -3v3 -4v4 (Илүү суудал хааж 853g болгох) • "
-            "-close 2 (Суудал хаах) • -openall (Нээх) • -swap 2 6 (Суудал солих) • -rmk (5м дахин эхлэх) • -gg (Бууж өгөх) • -addtime (+1м хүлээх)"
-        )
-        for r_row in db.execute("SELECT id, owner FROM rooms").fetchall():
-            has_g = db.execute(
-                "SELECT 1 FROM messages WHERE room_id=? AND text LIKE '⏱️ [КОМАНДЫН ЗААВАР]%' LIMIT 1",
-                (r_row["id"],),
-            ).fetchone()
-            if not has_g:
-                db.execute(
-                    "INSERT INTO messages(room_id,user_id,text,created) VALUES(?,?,?,?)",
-                    (r_row["id"], r_row["owner"], guide_txt, time.time()),
-                )
+        db.execute("DELETE FROM messages WHERE text LIKE '⏱️ [КОМАНДЫН ЗААВАР]%'")
 
 
 @asynccontextmanager
