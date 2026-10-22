@@ -2203,7 +2203,7 @@ def create_room(data: RoomInput, user=Depends(current_user)):
         "w3gs_port": w3gs_manager.listen_port,
         "host_counter": wroom.host_counter,
         "entry_key": wroom.entry_key,
-        "lan_ad_hex": wroom.get_lan_advertisement(6210).hex(),
+        "lan_ad_hex": wroom.get_lan_advertisement(6210, viewer_name=user["name"]).hex(),
         "id": map_meta.get("id", "lod_sync_25"),
         "filename": map_meta["filename"],
         "sha256": map_meta["sha256"],
@@ -2341,7 +2341,7 @@ def join(rid: str, data: RoomJoinInput | None = None, user=Depends(current_user)
         "phase": wroom.phase,
         "host_counter": wroom.rejoin_counter if wroom.phase in ("WAITING", "LOADING") else wroom.host_counter,
         "entry_key": wroom.entry_key,
-        "lan_ad_hex": wroom.get_lan_advertisement(6210).hex(),
+        "lan_ad_hex": wroom.get_lan_advertisement(6210, viewer_name=user["name"]).hex(),
         "id": map_meta.get("id", "lod_sync_25"),
         "filename": map_meta["filename"],
         "sha256": map_meta["sha256"],
@@ -2426,11 +2426,12 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
     launch_sig = int(room["launch_signal"] if "launch_signal" in room.keys() else 0)
     no_leavers_flag = int(room["no_leavers"] if "no_leavers" in room.keys() and room["no_leavers"] else 0)
     is_owner = (room["owner"] == user["id"])
-    w3gs_conn_cnt = sum(1 for p in wroom.peers.values() if p.writer is not None)
+    host_in_w3gs = bool(wroom.host_raw_gameinfo and (now - wroom.host_raw_updated_at) <= 6.0) or (wroom.phase != "LOBBY")
+    w3gs_conn_cnt = sum(1 for p in wroom.peers.values() if p.writer is not None) + (1 if host_in_w3gs and host_name not in wroom.peers else 0)
     members_out = []
     for m in mem_rows:
         m_rep = _compute_user_reputation(m, now, viewer_id=user["id"])
-        w3gs_conn = 1 if (m["name"] in wroom.peers and wroom.peers[m["name"]].writer is not None) else 0
+        w3gs_conn = 1 if ((m["name"] in wroom.peers and wroom.peers[m["name"]].writer is not None) or (m["id"] == room["owner"] and host_in_w3gs)) else 0
         live_st = wroom.player_stats.get(m["name"], {})
         m_ping = int(m["ping_ms"] if "ping_ms" in m.keys() and m["ping_ms"] else 12)
         if m_ping <= 0 or m_ping >= 9999:
@@ -2465,7 +2466,7 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
         )
     ]
     wait_rem = wroom.get_wait_remaining_sec()
-    my_w3gs_conn = 1 if (user["name"] in wroom.peers and wroom.peers[user["name"]].writer is not None) else 0
+    my_w3gs_conn = 1 if ((user["name"] in wroom.peers and wroom.peers[user["name"]].writer is not None) or (is_owner and host_in_w3gs)) else 0
     my_disc = 1 if (wroom.phase != "LOBBY" and (wroom.absent == user["name"] or user["name"] in wroom.disconnected_players)) else 0
     can_drop = 1 if (is_owner and wroom.absent and wroom.absent != user["name"] and wroom.phase in ("FROZEN", "WAITING", "LOADING") and (wait_rem <= 0 or w3gs_conn_cnt == 0)) else 0
     return {
@@ -2488,7 +2489,7 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
         "addtime_used": int(wroom.addtime_count),
         "addtime_max": int(wroom.addtime_max),
         "can_host_drop": can_drop,
-        "rejoin_ready": 1 if (my_disc and wroom.phase in ("WAITING", "LOADING") and wroom.checkpoint_info) else 0,
+        "rejoin_ready": 1 if (my_disc and wroom.phase in ("WAITING", "LOADING") and (wroom.checkpoint_info or wroom.last_host_gameinfo_snapshot)) else 0,
         "match_active": 1 if (wroom.phase != "LOBBY" and wroom.match_started_at > 0) else 0,
         "w3gs_port": w3gs_manager.listen_port,
         "host_counter": wroom.host_counter,
@@ -2508,7 +2509,7 @@ def room_state(rid: str, local_port: int = 6210, ping_ms: int = 0, ui: int = 0, 
             if wroom.checkpoint_info
             else None
         ),
-        "lan_ad_hex": wroom.get_lan_advertisement(local_port).hex(),
+        "lan_ad_hex": wroom.get_lan_advertisement(local_port, viewer_name=user["name"]).hex(),
         "slots": [dict(s) for s in wroom.slots[:10]],
         "members": members_out,
         "messages": messages_out,
@@ -2565,7 +2566,22 @@ async def launch_room_game(rid: str, user=Depends(current_user)):
     )
     if wroom.phase == "LOBBY" and host_peer is not None and host_peer.writer is not None and host_peer.map_ready and all_members_in_w3gs:
         started = await wroom.start_game(force=True)
-    return {"ok": True, "launch_signal": sig, "w3gs_started": started, "phase": wroom.phase}
+    return {"ok": True, "launch_signal": sig, "w3gs_started": False, "phase": wroom.phase}
+
+
+class HostLanAdInput(BaseModel):
+    lan_ad_hex: str = Field(default="", max_length=2048)
+    host_port: int = Field(default=6112, ge=1024, le=65535)
+
+
+@app.post("/api/rooms/{rid}/host_lan_ad")
+async def update_room_host_lan_ad(rid: str, data: HostLanAdInput, user=Depends(current_user)):
+    wroom = w3gs_manager.get_room(rid)
+    if wroom is None:
+        raise HTTPException(404, "Room not found")
+    raw_bytes = bytes.fromhex(data.lan_ad_hex.strip()) if data.lan_ad_hex.strip() else b""
+    await wroom.set_host_lan_ad_async(raw_bytes, data.host_port)
+    return {"ok": True}
 
 
 @app.post("/api/rooms/{rid}/start")
@@ -3485,7 +3501,7 @@ def respond_room_invite(inv_id: int, data: InviteRespondInput, user=Depends(curr
         "phase": wroom.phase,
         "host_counter": wroom.rejoin_counter if wroom.phase in ("WAITING", "LOADING") else wroom.host_counter,
         "entry_key": wroom.entry_key,
-        "lan_ad_hex": wroom.get_lan_advertisement(6210).hex(),
+        "lan_ad_hex": wroom.get_lan_advertisement(6210, viewer_name=user["name"]).hex(),
         "id": map_meta.get("id", "lod_sync_25"),
         "filename": map_meta["filename"],
         "sha256": map_meta["sha256"],

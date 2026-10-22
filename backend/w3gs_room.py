@@ -456,6 +456,13 @@ class RoomPeer:
     pending: deque = field(default_factory=deque)
     loaded: bool = False
     map_ready: bool = False
+    tunnel_reader: asyncio.StreamReader | None = None
+    tunnel_writer: asyncio.StreamWriter | None = None
+    join_slotinfojoin_pkt: bytes = b""
+    loaded_other_pids: list[int] = field(default_factory=list)
+    recorded_ticks: list[bytes] = field(default_factory=list)
+    keepalives_sent: int = 0
+    deliberate_quit: bool = False
 
 
 class W3GSRoom:
@@ -548,6 +555,20 @@ class W3GSRoom:
         self.tasks: set[asyncio.Task] = set()
         self._tick_task: asyncio.Task | None = None
         self._bg_started = False
+        # Native Warcraft III "Create Game" Host Tunnel & Rejoin state
+        self.host_raw_gameinfo: bytes = b""
+        self.last_host_gameinfo_snapshot: bytes = b""
+        self.host_raw_updated_at: float = 0.0
+        self.host_war3_port: int = 6112
+        self.orig_host_counter: int = 1
+        self.orig_entry_key: int = 0
+        self.host_ctrl_writer: asyncio.StreamWriter | None = None
+        self.pending_tunnels: dict[str, asyncio.Future] = {}
+        self._tunnel_seq: int = 0
+        self.host_playerinfo_pkts: dict[int, bytes] = {}
+        self.last_mapcheck_pkt: bytes = b""
+        self.last_slotinfo_pkt: bytes = b""
+        self.host_pid: int = 1
 
     async def reset_room_for_remake(self, reason_msg: str, score_winner_team: int | None = None):
         if self.remake_in_progress:
@@ -591,6 +612,12 @@ class W3GSRoom:
                     except Exception:
                         pass
                     p.writer = None
+                if p.tunnel_writer is not None:
+                    try:
+                        p.tunnel_writer.close()
+                    except Exception:
+                        pass
+                    p.tunnel_writer = None
                 p.loaded = False
 
             # Reset room back to fresh LOBBY and bump host_counter so Warcraft III LAN refreshes the host immediately
@@ -625,6 +652,10 @@ class W3GSRoom:
             self.kill_dedup.clear()
             self.assist_dedup.clear()
             self.player_stats.clear()
+            self.host_playerinfo_pkts.clear()
+            self.last_mapcheck_pkt = b""
+            self.last_slotinfo_pkt = b""
+            self.host_raw_gameinfo = b""
             self.auto_fill_comp = False
             self.slots = [dict(s) for s in self.default_slots]
             self.peers.clear()
@@ -969,6 +1000,16 @@ class W3GSRoom:
             except Exception:
                 pass
             self.debug_fh = None
+        if self.host_ctrl_writer is not None:
+            try:
+                self.host_ctrl_writer.close()
+            except Exception:
+                pass
+            self.host_ctrl_writer = None
+        for fut in list(self.pending_tunnels.values()):
+            if not fut.done():
+                fut.cancel()
+        self.pending_tunnels.clear()
         for t in list(self.tasks):
             t.cancel()
         for p in list(self.peers.values()):
@@ -978,9 +1019,89 @@ class W3GSRoom:
                 except Exception:
                     pass
                 p.writer = None
+            if p.tunnel_writer is not None:
+                try:
+                    p.tunnel_writer.close()
+                except Exception:
+                    pass
+                p.tunnel_writer = None
 
-    def get_lan_advertisement(self, local_port: int = 6210) -> bytes:
+    def _patch_raw_gameinfo(self, raw: bytes, counter: int, local_port: int, custom_title: str | None = None) -> bytes:
+        if len(raw) < 26 or raw[:2] != b"\xf7\x30":
+            return b""
+        try:
+            name_end = raw.index(0, 20)
+            title_bytes = (to_wc3_latin(custom_title or self.name) or "ZevArena").encode("utf-8")[:31]
+            new_payload = (
+                raw[4:12]
+                + struct.pack("<II", counter & 0x0FFFFFFF, self.entry_key & 0xFFFFFFFF)
+                + title_bytes + b"\x00"
+                + raw[name_end + 1 : -2]
+                + struct.pack("<H", local_port & 0xFFFF)
+            )
+            return packet(0x30, new_payload)
+        except ValueError:
+            pkt = bytearray(raw)
+            pkt[12:20] = struct.pack("<II", counter & 0x0FFFFFFF, self.entry_key & 0xFFFFFFFF)
+            pkt[-2:] = struct.pack("<H", local_port & 0xFFFF)
+            return bytes(pkt)
+
+    async def set_host_lan_ad_async(self, raw_gameinfo: bytes, host_port: int = 6112):
+        if not raw_gameinfo or len(raw_gameinfo) < 26 or raw_gameinfo[:2] != b"\xf7\x30":
+            self.host_raw_gameinfo = b""
+            self.updated_at = time.time()
+            return
+        orig_counter, orig_key = struct.unpack_from("<II", raw_gameinfo, 12)
+        if self.phase != "LOBBY":
+            await self.reset_room_for_remake("🔄 Host Warcraft III дотор шинээр Create Game үүсгэлээ!", score_winner_team=self.winner_team)
+        self.orig_host_counter = orig_counter
+        self.orig_entry_key = orig_key
+        ad_port = struct.unpack_from("<H", raw_gameinfo, len(raw_gameinfo) - 2)[0]
+        self.host_war3_port = int(host_port or ad_port or 6112)
+        self.host_raw_gameinfo = bytes(raw_gameinfo)
+        self.last_host_gameinfo_snapshot = bytes(raw_gameinfo)
+        self.host_raw_updated_at = time.time()
+        self.updated_at = time.time()
+
+    def get_lan_advertisement(self, local_port: int = 6210, viewer_name: str | None = None) -> bytes:
         up_time = max(1, int(time.monotonic() - self.created_at))
+        if viewer_name is not None:
+            # The Room Host clicks "Create Game" inside Warcraft III themselves -> never broadcast a LAN ad to the Host!
+            if self.owner_name and viewer_name.lower() == self.owner_name.lower():
+                return b""
+            if self.phase in ("WAITING", "LOADING", "CONTINUING") and viewer_name in self.disconnected_players:
+                if self.last_host_gameinfo_snapshot and len(self.last_host_gameinfo_snapshot) >= 26:
+                    return self._patch_raw_gameinfo(
+                        self.last_host_gameinfo_snapshot,
+                        self.rejoin_counter,
+                        local_port,
+                        custom_title=f"REJOIN {self.name}",
+                    )
+                if self.checkpoint_info:
+                    return build_w3gs_gameinfo(
+                        game_name="Rejoin Checkpoint",
+                        host_port=local_port,
+                        host_counter=self.rejoin_counter,
+                        entry_key=self.entry_key,
+                        up_time=up_time,
+                        save_filename=self.checkpoint_info["filename"],
+                        save_magic=self.checkpoint_info["magic"],
+                        map_path=self.map_path,
+                        map_width=self.map_width,
+                        map_height=self.map_height,
+                        map_crc=self.map_crc,
+                        map_sha1=self.map_sha1,
+                    )
+            if self.phase == "LOBBY":
+                if self.host_raw_gameinfo and len(self.host_raw_gameinfo) >= 26 and (time.time() - self.host_raw_updated_at) <= 6.0:
+                    return self._patch_raw_gameinfo(
+                        self.host_raw_gameinfo,
+                        self.host_counter,
+                        local_port,
+                        custom_title=self.name,
+                    )
+                return b""
+            return b""
         if self.phase == "FROZEN":
             # Do not broadcast a stale pre-save lobby advertisement while waiting for the survivor's .w3z checkpoint upload
             return b""
@@ -1622,6 +1743,478 @@ class W3GSRoom:
                         except Exception:
                             pass
 
+    async def handle_host_ctrl(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, framer: Framer):
+        old_w = self.host_ctrl_writer
+        self.host_ctrl_writer = writer
+        if old_w is not None and old_w is not writer:
+            try:
+                old_w.close()
+            except Exception:
+                pass
+        sock = writer.get_extra_info("socket")
+        if sock is not None:
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass
+        try:
+            while True:
+                packets = framer.feed(b"")
+                for pkt in packets:
+                    if len(pkt) < 4 or pkt[0] != 0xF7:
+                        continue
+                    ptype = pkt[1]
+                    if ptype == 0x5D:  # HOST_LAN_AD update from Host's ZevArena client
+                        if len(pkt) >= 32:
+                            hport = struct.unpack_from("<H", pkt, 4)[0]
+                            raw_ad = pkt[6:]
+                            await self.set_host_lan_ad_async(raw_ad, hport)
+                        else:
+                            await self.set_host_lan_ad_async(b"", 6112)
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=25.0)
+                if not chunk:
+                    break
+                framer.feed(chunk)
+                for pkt in framer.feed(b""):
+                    if len(pkt) < 4 or pkt[0] != 0xF7:
+                        continue
+                    ptype = pkt[1]
+                    if ptype == 0x5D:
+                        if len(pkt) >= 32:
+                            hport = struct.unpack_from("<H", pkt, 4)[0]
+                            raw_ad = pkt[6:]
+                            await self.set_host_lan_ad_async(raw_ad, hport)
+                        else:
+                            await self.set_host_lan_ad_async(b"", 6112)
+        except Exception:
+            pass
+        finally:
+            if self.host_ctrl_writer is writer:
+                self.host_ctrl_writer = None
+                self.host_raw_gameinfo = b""
+            try:
+                writer.close()
+            except Exception:
+                pass
+
+    def resolve_host_tunnel(self, tunnel_id: str, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, framer: Framer) -> bool:
+        fut = self.pending_tunnels.pop(tunnel_id, None)
+        if fut is not None and not fut.done():
+            sock = writer.get_extra_info("socket")
+            if sock is not None:
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except OSError:
+                    pass
+            fut.set_result((reader, writer, framer))
+            return True
+        return False
+
+    async def open_host_tunnel(self, timeout: float = 5.0) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, Framer] | None:
+        if self.host_ctrl_writer is None:
+            return None
+        self._tunnel_seq += 1
+        tid = f"t{self._tunnel_seq}_{int(time.monotonic() * 1000) & 0xFFFF}"
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self.pending_tunnels[tid] = fut
+        try:
+            cmd_pkt = packet(0x5B, f"{tid}:{self.host_war3_port}".encode("utf-8"))
+            self.host_ctrl_writer.write(cmd_pkt)
+            await self.host_ctrl_writer.drain()
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except Exception:
+            self.pending_tunnels.pop(tid, None)
+            return None
+
+    def _parse_and_update_slot_block(self, block: bytes):
+        if len(block) < 3:
+            return
+        count = block[2]
+        if not (1 <= count <= 12) or len(block) < 3 + count * 9 + 6:
+            return
+        fields = ("pid", "download", "status", "computer", "team", "colour", "race", "difficulty", "handicap")
+        pos = 3
+        parsed_slots = []
+        for _ in range(count):
+            parsed_slots.append(dict(zip(fields, block[pos : pos + 9])))
+            pos += 9
+        self.slots = parsed_slots
+        self.random_seed = struct.unpack_from("<I", block, pos)[0]
+        for p in self.peers.values():
+            if p.pid > 0:
+                for idx, s in enumerate(self.slots):
+                    if s.get("pid") == p.pid and s.get("status") == 2 and s.get("computer") == 0:
+                        p.sid = idx
+                        break
+
+    async def _handle_native_rejoin(self, peer: RoomPeer, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, framer: Framer):
+        peer.writer = writer
+        peer.loaded = False
+        self.disconnected_players.discard(peer.name)
+        if self.absent == peer.name:
+            self.absent = next(iter(self.disconnected_players), None)
+        self.phase = "LOADING"
+        st = self.ensure_player_stat(peer.name)
+        st["reconnected"] = st.get("reconnected", 0) + 1
+        if self.last_slotinfo_pkt and len(self.last_slotinfo_pkt) > 4 and len(peer.join_slotinfojoin_pkt) >= 21:
+            sjoin_pkt = packet(0x04, self.last_slotinfo_pkt[4:] + peer.join_slotinfojoin_pkt[-17:])
+        else:
+            sjoin_pkt = peer.join_slotinfojoin_pkt
+        if sjoin_pkt:
+            await self.send(peer, sjoin_pkt)
+        sent_pids = {peer.pid}
+        for opid, pinfo_pkt in list(self.host_playerinfo_pkts.items()):
+            if opid != peer.pid and opid not in sent_pids:
+                sent_pids.add(opid)
+                await self.send(peer, pinfo_pkt)
+        for other_name, other_peer in list(self.peers.items()):
+            if other_name != peer.name and other_peer.pid > 0 and other_peer.pid not in sent_pids:
+                sent_pids.add(other_peer.pid)
+                await self.send(peer, send_w3gs_playerinfo(other_peer.pid, other_peer.name))
+        if self.last_mapcheck_pkt:
+            await self.send(peer, self.last_mapcheck_pkt)
+        if self.last_slotinfo_pkt:
+            await self.send(peer, self.last_slotinfo_pkt)
+        self.event("native_rejoin_handshake_sent", name=peer.name, pid=peer.pid, recorded_ticks=len(peer.recorded_ticks))
+
+        rejoin_ticks_sent = 0
+        rejoin_acks_recv = 0
+        fast_forwarding = False
+        try:
+            while True:
+                for p in framer.feed(b""):
+                    if len(p) < 4 or p[0] != 0xF7:
+                        continue
+                    ptype = p[1]
+                    if ptype == 0x3D and not fast_forwarding:  # MAPSIZE
+                        await self.send(peer, send_w3gs_countdown_start())
+                        await self.send(peer, send_w3gs_countdown_end())
+                    elif ptype == 0x23 and not fast_forwarding:  # GAMELOADED_SELF
+                        fast_forwarding = True
+                        loaded_pids = list(dict.fromkeys(peer.loaded_other_pids))
+                        if not loaded_pids:
+                            loaded_pids = [s["pid"] for s in self.slots if s.get("status") == 2 and s.get("computer") == 0 and s.get("pid", 0) > 0 and s.get("pid") != peer.pid]
+                        for opid in loaded_pids:
+                            await self.send(peer, send_w3gs_gameloaded_others(opid))
+                        while rejoin_ticks_sent < len(peer.recorded_ticks) and (rejoin_ticks_sent - rejoin_acks_recv) < 35:
+                            await self.send(peer, peer.recorded_ticks[rejoin_ticks_sent])
+                            rejoin_ticks_sent += 1
+                        if rejoin_ticks_sent >= len(peer.recorded_ticks):
+                            peer.loaded = True
+                            if not self.disconnected_players:
+                                self.phase = "CONTINUING"
+                    elif ptype == 0x27:  # OUTGOING_KEEPALIVE
+                        rejoin_acks_recv += 1
+                        if rejoin_acks_recv > peer.keepalives_sent and peer.tunnel_writer is not None:
+                            try:
+                                peer.tunnel_writer.write(p)
+                                await peer.tunnel_writer.drain()
+                                peer.keepalives_sent += 1
+                            except Exception:
+                                pass
+                        if fast_forwarding and not peer.loaded:
+                            while rejoin_ticks_sent < len(peer.recorded_ticks) and (rejoin_ticks_sent - rejoin_acks_recv) < 35:
+                                await self.send(peer, peer.recorded_ticks[rejoin_ticks_sent])
+                                rejoin_ticks_sent += 1
+                            if rejoin_ticks_sent >= len(peer.recorded_ticks) and rejoin_acks_recv >= len(peer.recorded_ticks):
+                                peer.loaded = True
+                                if not self.disconnected_players:
+                                    self.phase = "CONTINUING"
+                                self.event("native_rejoin_completed", name=peer.name, ticks=rejoin_ticks_sent)
+                    elif ptype == 0x21:  # LEAVEGAME
+                        peer.deliberate_quit = True
+                        if peer.tunnel_writer is not None:
+                            try:
+                                peer.tunnel_writer.write(p)
+                                await peer.tunnel_writer.drain()
+                            except Exception:
+                                pass
+                        return
+                    elif peer.loaded and peer.tunnel_writer is not None:
+                        if ptype == 0x26 and len(p) >= 8:
+                            self.extract_and_strip_hero_nt(peer.name, p[8:])
+                        try:
+                            peer.tunnel_writer.write(p)
+                            await peer.tunnel_writer.drain()
+                        except Exception:
+                            return
+                chunk = await asyncio.wait_for(reader.read(8192), timeout=45.0)
+                if not chunk:
+                    break
+                framer.feed(chunk)
+        except Exception:
+            pass
+        finally:
+            if peer.writer is writer:
+                peer.writer = None
+                peer.loaded = False
+                if peer.deliberate_quit or self.winner_team is not None or self.match_started_at <= 0.0:
+                    if peer.tunnel_writer is not None:
+                        try:
+                            peer.tunnel_writer.close()
+                        except Exception:
+                            pass
+                        peer.tunnel_writer = None
+                    self.peers.pop(peer.name, None)
+                    self.disconnected_players.discard(peer.name)
+                else:
+                    self.disconnected_players.add(peer.name)
+                    self.absent = peer.name
+                    self.wait_started_at = time.time()
+                    self.phase = "WAITING"
+            try:
+                writer.close()
+            except Exception:
+                pass
+
+    async def handle_native_host_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, first_packet: bytes, framer: Framer):
+        counter, key, name, internal_ip = join_identity(first_packet)
+        if not name or len(name) > 15 or name in self.kicked_players:
+            writer.write(send_w3gs_rejectjoin(9))
+            await writer.drain()
+            writer.close()
+            return
+        if name in self.disconnected_players and name in self.peers and self.peers[name].tunnel_writer is not None:
+            await self._handle_native_rejoin(self.peers[name], reader, writer, framer)
+            return
+        if self.phase != "LOBBY":
+            writer.write(send_w3gs_rejectjoin(9))
+            await writer.drain()
+            writer.close()
+            return
+        tun = await self.open_host_tunnel(timeout=5.0)
+        if tun is None:
+            writer.write(send_w3gs_rejectjoin(9))
+            await writer.drain()
+            writer.close()
+            return
+        t_reader, t_writer, t_framer = tun
+        patched_join = bytearray(first_packet)
+        patched_join[4:12] = struct.pack("<II", self.orig_host_counter & 0xFFFFFFFF, self.orig_entry_key & 0xFFFFFFFF)
+        peer = RoomPeer(
+            name=name,
+            writer=writer,
+            pid=0,
+            sid=-1,
+            internal_ip=internal_ip,
+            tunnel_reader=t_reader,
+            tunnel_writer=t_writer,
+        )
+        old_p = self.peers.get(name)
+        if old_p is not None and old_p.tunnel_writer is not None:
+            try:
+                old_p.tunnel_writer.close()
+            except Exception:
+                pass
+        self.peers[name] = peer
+
+        async def _tunnel_to_client():
+            try:
+                while True:
+                    for pkt in t_framer.feed(b""):
+                        if len(pkt) < 4 or pkt[0] != 0xF7:
+                            continue
+                        ptype = pkt[1]
+                        if ptype == 0x04 and len(pkt) >= 21:  # SLOTINFOJOIN
+                            peer.join_slotinfojoin_pkt = pkt
+                            peer.pid = pkt[-17]
+                            self._parse_and_update_slot_block(pkt[4:-17])
+                        elif ptype == 0x06 and len(pkt) >= 10:  # PLAYERINFO
+                            opid = pkt[8]
+                            self.host_playerinfo_pkts[opid] = pkt
+                        elif ptype == 0x3D:  # MAPCHECK
+                            self.last_mapcheck_pkt = pkt
+                        elif ptype == 0x09 and len(pkt) > 6:  # SLOTINFO
+                            self.last_slotinfo_pkt = pkt
+                            self._parse_and_update_slot_block(pkt[4:])
+                        elif ptype == 0x0A:  # COUNTDOWN_START
+                            self.host_raw_gameinfo = b""
+                            if self.phase == "LOBBY":
+                                self.phase = "STARTING"
+                                joined_pids = {px.pid for px in self.peers.values() if px.pid > 0}
+                                t0_cnt = 0
+                                t1_cnt = 0
+                                for idx, s in enumerate(self.slots):
+                                    if s.get("status") == 2 and s.get("computer") == 0:
+                                        tm = int(s.get("team", 0))
+                                        if tm == 0:
+                                            t0_cnt += 1
+                                        elif tm == 1:
+                                            t1_cnt += 1
+                                        spid = int(s.get("pid", 0))
+                                        if spid > 0 and spid not in joined_pids and self.owner_name:
+                                            self.host_pid = spid
+                                            hst = self.ensure_player_stat(self.owner_name)
+                                            hst["team"] = tm
+                                            hst["colour"] = int(s.get("colour", 1))
+                                            self.colour_to_name[hst["colour"]] = self.owner_name
+                                for px in self.peers.values():
+                                    self.ensure_player_stat(px.name)
+                                self.initial_team_counts = {0: t0_cnt, 1: t1_cnt}
+                                self.initial_player_count = t0_cnt + t1_cnt
+                                self.initial_players = set(self.player_stats.keys())
+                        elif ptype == 0x0B:  # COUNTDOWN_END
+                            if self.match_started_at <= 0.0:
+                                self.match_started_at = time.time()
+                        elif ptype == 0x08 and len(pkt) >= 5:  # GAMELOADED_OTHERS
+                            opid = pkt[4]
+                            if opid not in peer.loaded_other_pids:
+                                peer.loaded_other_pids.append(opid)
+                            if self.phase == "STARTING":
+                                self.phase = "CONTINUING"
+                        elif ptype in (0x0C, 0x48):  # INCOMING_ACTION / INCOMING_ACTION2
+                            peer.recorded_ticks.append(pkt)
+                            if len(pkt) > 8:
+                                pos_a = 8
+                                while pos_a + 3 <= len(pkt):
+                                    apid = pkt[pos_a]
+                                    alen = struct.unpack_from("<H", pkt, pos_a + 1)[0]
+                                    pos_a += 3
+                                    if pos_a + alen > len(pkt):
+                                        break
+                                    aname = self.owner_name if apid == self.host_pid else next((px.name for px in self.peers.values() if px.pid == apid), "")
+                                    if aname:
+                                        self.extract_and_strip_hero_nt(aname, pkt[pos_a : pos_a + alen])
+                                    pos_a += alen
+                        elif ptype == 0x07 and len(pkt) >= 9:  # PLAYERLEAVE_OTHERS
+                            lpid = pkt[4]
+                            lcode = struct.unpack_from("<I", pkt, 5)[0]
+                            if self.phase == "LOBBY":
+                                self.host_playerinfo_pkts.pop(lpid, None)
+                            elif lcode in (8, 9) and self.winner_team is None:
+                                lteam = 0
+                                for s in self.slots:
+                                    if s.get("pid") == lpid:
+                                        lteam = int(s.get("team", 0))
+                                        break
+                                self.winner_team = lteam if lcode == 9 else (1 - lteam)
+                        elif ptype == 0x01 and len(pkt) >= 8:  # PING_FROM_HOST
+                            if peer.writer is None:
+                                try:
+                                    t_writer.write(packet(0x28, pkt[4:8]))
+                                    await t_writer.drain()
+                                except Exception:
+                                    break
+                        if peer.writer is not None and (peer.loaded or self.phase in ("LOBBY", "STARTING") or ptype not in (0x0C, 0x48)):
+                            try:
+                                peer.writer.write(pkt)
+                                await peer.writer.drain()
+                            except Exception:
+                                pass
+                    if peer.writer is None and self.wait_started_at > 0 and (time.time() - self.wait_started_at) > self.wait_duration_sec:
+                        st = self.ensure_player_stat(peer.name)
+                        st["abandoned"] = True
+                        break
+                    chunk = await asyncio.wait_for(t_reader.read(16384), timeout=30.0)
+                    if not chunk:
+                        break
+                    t_framer.feed(chunk)
+            except Exception:
+                pass
+            finally:
+                peer.tunnel_writer = None
+                peer.tunnel_reader = None
+                try:
+                    t_writer.close()
+                except Exception:
+                    pass
+                if peer.writer is not None:
+                    try:
+                        peer.writer.close()
+                    except Exception:
+                        pass
+                    peer.writer = None
+                if self.peers.get(peer.name) is peer:
+                    self.peers.pop(peer.name, None)
+                self.disconnected_players.discard(peer.name)
+                if not self.peers and self.phase != "LOBBY" and not self.remake_in_progress:
+                    await self.reset_room_for_remake("🔄 Тоглолт дуусаж өрөө шинэ Create Game хүлээж байна!", score_winner_team=self.winner_team)
+
+        tun_task = self.spawn(_tunnel_to_client())
+        try:
+            t_writer.write(bytes(patched_join))
+            if framer.buffer:
+                t_writer.write(bytes(framer.buffer))
+                framer.buffer.clear()
+            await t_writer.drain()
+            while True:
+                chunk = await asyncio.wait_for(reader.read(16384), timeout=45.0)
+                if not chunk:
+                    break
+                for p in framer.feed(chunk):
+                    if len(p) < 4 or p[0] != 0xF7:
+                        continue
+                    ptype = p[1]
+                    if ptype == 0x3D:
+                        peer.map_ready = True
+                    elif ptype == 0x23:
+                        peer.loaded = True
+                        if self.phase == "STARTING":
+                            self.phase = "CONTINUING"
+                    elif ptype == 0x27:
+                        peer.keepalives_sent += 1
+                    elif ptype == 0x26 and len(p) >= 8:
+                        self.extract_and_strip_hero_nt(peer.name, p[8:])
+                    elif ptype == 0x2F and self.disconnected_players and self.get_wait_remaining_sec() > 0:
+                        # Block premature Drop Players clicks during the 180s Reconnect Shield window
+                        continue
+                    elif ptype == 0x21:  # Deliberate F10 -> E -> Q Quit
+                        if len(p) >= 8:
+                            lreason = struct.unpack_from("<I", p, 4)[0]
+                            pteam = int(self.slots[peer.sid].get("team", 0)) if (0 <= peer.sid < len(self.slots)) else 0
+                            if lreason == 9 and self.winner_team is None:
+                                self.winner_team = pteam
+                            elif lreason == 8 and self.winner_team is None:
+                                self.winner_team = 1 - pteam
+                        peer.deliberate_quit = True
+                        try:
+                            t_writer.write(p)
+                            await t_writer.drain()
+                        except Exception:
+                            pass
+                        break
+                    try:
+                        t_writer.write(p)
+                        await t_writer.drain()
+                    except Exception:
+                        break
+                if peer.deliberate_quit:
+                    break
+        except Exception:
+            pass
+        finally:
+            if peer.writer is writer:
+                peer.writer = None
+                peer.loaded = False
+            if self.phase == "LOBBY" or peer.deliberate_quit or self.winner_team is not None or self.match_started_at <= 0.0:
+                if self.match_started_at > 0.0 and peer.deliberate_quit and self.winner_team is None:
+                    st = self.ensure_player_stat(peer.name)
+                    st["quit_at"] = time.time()
+                    self.spawn(self._confirm_quit_leaver(peer.name, self.host_counter))
+                try:
+                    t_writer.close()
+                except Exception:
+                    pass
+                tun_task.cancel()
+                if self.peers.get(peer.name) is peer:
+                    self.peers.pop(peer.name, None)
+                self.disconnected_players.discard(peer.name)
+                if not self.peers and self.phase != "LOBBY" and not self.remake_in_progress:
+                    await self.reset_room_for_remake("🔄 Бүх тоглогчид гарсан тул өрөө шинээр бэлэн боллоо!", score_winner_team=self.winner_team)
+            else:
+                # Crash / Fatal Error / Internet drop -> keep HOST_TUNNEL (t_writer / tun_task) alive for 180s Rejoin!
+                self.disconnected_players.add(peer.name)
+                self.absent = peer.name
+                self.wait_started_at = time.time()
+                self.wait_duration_sec = 180.0
+                self.phase = "WAITING"
+                self.event("native_client_disconnected_waiting_rejoin", name=peer.name, wait_sec=180)
+            try:
+                writer.close()
+            except Exception:
+                pass
+
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, first_packet: bytes, framer: Framer):
         self.ensure_background_tasks()
         sock = writer.get_extra_info("socket")
@@ -1632,6 +2225,9 @@ class W3GSRoom:
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_QUICKACK, 1)
             except OSError:
                 pass
+        if self.host_ctrl_writer is not None or self.last_host_gameinfo_snapshot:
+            await self.handle_native_host_client(reader, writer, first_packet, framer)
+            return
         peer: RoomPeer | None = None
         replacement = False
         deliberate_quit = False
@@ -2339,6 +2935,30 @@ class W3GSRoomManager:
             if len(packets) > 1:
                 rem = b"".join(packets[1:]) + bytes(framer.buffer)
                 framer.buffer = bytearray(rem)
+            if len(first) >= 4 and first[0] == 0xF7 and first[1] == 0x5A:
+                info_str = first[4:].decode("utf-8", errors="replace")
+                parts = info_str.split(":")
+                if len(parts) >= 2 and parts[0] == "HOST_CTRL":
+                    room = self.get_room(parts[1])
+                    if room is not None:
+                        await room.handle_host_ctrl(reader, writer, framer)
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+                return
+            if len(first) >= 4 and first[0] == 0xF7 and first[1] == 0x5C:
+                info_str = first[4:].decode("utf-8", errors="replace")
+                parts = info_str.split(":", 1)
+                if len(parts) == 2:
+                    room = self.get_room(parts[0])
+                    if room is not None and room.resolve_host_tunnel(parts[1], reader, writer, framer):
+                        return
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+                return
             counter, key, _, _ = join_identity(first)
             room = self.find_room_by_counter(counter, key)
             if room is None:

@@ -4492,6 +4492,16 @@ namespace MongolRanger
         {
             try
             {
+                if (war3LobbyHostWin != null && war3LobbyHostWin.IsVisible)
+                    war3LobbyHostWin.Hide();
+            }
+            catch { }
+        }
+
+        private static void _UnusedUpdateWar3LobbyHostOverlay()
+        {
+            try
+            {
                 IntPtr war3Hwnd;
                 bool war3Fg = IsWarcraftForeground(out war3Hwnd);
                 bool showHostHud = !string.IsNullOrEmpty(currentRoomId)
@@ -5196,7 +5206,7 @@ namespace MongolRanger
                 ResetCurrentRoomRuntimeState();
                 w3gsPort = ExtractJsonInt(res, "w3gs_port", 8051);
                 string lanHex = ExtractJsonString(res, "lan_ad_hex");
-                if (!string.IsNullOrEmpty(lanHex)) currentLanAd = HexToBytes(lanHex);
+                currentLanAd = string.IsNullOrEmpty(lanHex) ? null : HexToBytes(lanHex);
 
                 lblSetRoomCodeText.Text = string.IsNullOrEmpty(currentRoomCode)
                     ? "🔓 Код Хийх (Нээлттэй)"
@@ -5265,7 +5275,7 @@ namespace MongolRanger
                 }
                 w3gsPort = ExtractJsonInt(res, "w3gs_port", 8051);
                 string lanHex = ExtractJsonString(res, "lan_ad_hex");
-                if (!string.IsNullOrEmpty(lanHex)) currentLanAd = HexToBytes(lanHex);
+                currentLanAd = string.IsNullOrEmpty(lanHex) ? null : HexToBytes(lanHex);
 
                 string mId = ExtractJsonString(res, "id");
                 string mFn = ExtractJsonString(res, "filename");
@@ -5333,12 +5343,6 @@ namespace MongolRanger
             if (string.IsNullOrEmpty(currentRoomId) || !isCurrentRoomOwner) return;
             try
             {
-                if (currentRoomMyW3gsConnected && IsWarcraftRunning() && currentRoomPhase == "LOBBY")
-                {
-                    ApiRequest("POST", "/api/rooms/" + currentRoomId + "/start", "{}");
-                    SyncRoomStateOnceAsync();
-                    return;
-                }
                 string res = ApiRequest("POST", "/api/rooms/" + currentRoomId + "/launch", "{}");
                 int sig = ExtractJsonInt(res, "launch_signal", (int)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds);
                 lastHandledLaunchSignal = sig;
@@ -8045,12 +8049,13 @@ namespace MongolRanger
                     udpBroadcaster = new UdpClient();
                 }
                 IPEndPoint epLocal = new IPEndPoint(IPAddress.Loopback, 6112);
+                byte[] lastCounterBytes = null;
                 while (running)
                 {
                     try
                     {
-                        // Do not spam war3.exe UDP port 6112 while player is already connected inside an active match
-                        if (!(currentRoomMyW3gsConnected && IsMatchActuallyStarted()))
+                        // Never broadcast a room ad to the Host's own war3.exe (the Host clicks "Create Game" inside war3.exe themselves!)
+                        if (!isCurrentRoomOwner && !(currentRoomMyW3gsConnected && IsMatchActuallyStarted()))
                         {
                             byte[] src = currentLanAd;
                             if (src != null && src.Length >= 20)
@@ -8059,9 +8064,16 @@ namespace MongolRanger
                                 // Always patch the last 2 bytes (uint16 LE port) of W3GS_GAMEINFO (0xF7 0x30) to match localProxyPort
                                 pkt[pkt.Length - 2] = (byte)(localProxyPort & 0xFF);
                                 pkt[pkt.Length - 1] = (byte)((localProxyPort >> 8) & 0xFF);
+                                lastCounterBytes = new byte[] { pkt[12], pkt[13], pkt[14], pkt[15] };
 
                                 // #2 Fix: Send strictly to 127.0.0.1:6112 so Warcraft III Local Area Network displays ONLY 1 Host instead of 4 duplicates!
                                 try { udpBroadcaster.Send(pkt, pkt.Length, epLocal); } catch { }
+                            }
+                            else if (lastCounterBytes != null)
+                            {
+                                byte[] decPkt = new byte[] { 0xF7, 0x33, 0x08, 0x00, lastCounterBytes[0], lastCounterBytes[1], lastCounterBytes[2], lastCounterBytes[3] };
+                                try { udpBroadcaster.Send(decPkt, decPkt.Length, epLocal); } catch { }
+                                lastCounterBytes = null;
                             }
                         }
                     }
@@ -8071,6 +8083,325 @@ namespace MongolRanger
             });
             udpThread.IsBackground = true;
             udpThread.Start();
+
+            StartHostRelayWorker();
+        }
+
+        private static string BytesToHex(byte[] data)
+        {
+            if (data == null || data.Length == 0) return "";
+            StringBuilder sb = new StringBuilder(data.Length * 2);
+            for (int i = 0; i < data.Length; i++) sb.Append(data[i].ToString("x2"));
+            return sb.ToString();
+        }
+
+        private static int GetLocalWar3NetGamePort()
+        {
+            try
+            {
+                using (RegistryKey rk = Registry.CurrentUser.OpenSubKey(@"Software\Blizzard Entertainment\Warcraft III\Gameplay"))
+                {
+                    if (rk != null)
+                    {
+                        object v = rk.GetValue("netgameport");
+                        if (v != null)
+                        {
+                            int p = Convert.ToInt32(v);
+                            if (p >= 1024 && p <= 65535) return p;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return 6112;
+        }
+
+        private static void BridgeHostTunnelSession(string rid, string tunnelId, int hostPort)
+        {
+            Thread th = new Thread(() =>
+            {
+                try { Thread.CurrentThread.Priority = ThreadPriority.Highest; } catch { }
+                try
+                {
+                    using (TcpClient war3Client = new TcpClient("127.0.0.1", hostPort))
+                    using (TcpClient srvTunnel = new TcpClient(W3GS_HOST, w3gsPort))
+                    {
+                        war3Client.NoDelay = true;
+                        srvTunnel.NoDelay = true;
+                        war3Client.ReceiveBufferSize = 65536;
+                        war3Client.SendBufferSize = 65536;
+                        srvTunnel.ReceiveBufferSize = 65536;
+                        srvTunnel.SendBufferSize = 65536;
+                        Stream ws = war3Client.GetStream();
+                        Stream ss = srvTunnel.GetStream();
+
+                        byte[] hdrPayload = Encoding.UTF8.GetBytes(rid + ":" + tunnelId);
+                        byte[] hdr = new byte[4 + hdrPayload.Length];
+                        hdr[0] = 0xF7;
+                        hdr[1] = 0x5C;
+                        hdr[2] = (byte)(hdr.Length & 0xFF);
+                        hdr[3] = (byte)((hdr.Length >> 8) & 0xFF);
+                        Buffer.BlockCopy(hdrPayload, 0, hdr, 4, hdrPayload.Length);
+                        ss.Write(hdr, 0, hdr.Length);
+
+                        Thread tUp = new Thread(() =>
+                        {
+                            try { Thread.CurrentThread.Priority = ThreadPriority.Highest; } catch { }
+                            try
+                            {
+                                byte[] buf = new byte[16384];
+                                int n;
+                                while ((n = ws.Read(buf, 0, buf.Length)) > 0)
+                                {
+                                    ss.Write(buf, 0, n);
+                                }
+                            }
+                            catch { }
+                            try { srvTunnel.Close(); } catch { }
+                        });
+                        tUp.IsBackground = true;
+                        tUp.Start();
+
+                        byte[] sbuf = new byte[16384];
+                        int sn;
+                        while ((sn = ss.Read(sbuf, 0, sbuf.Length)) > 0)
+                        {
+                            ws.Write(sbuf, 0, sn);
+                        }
+                    }
+                }
+                catch { }
+            });
+            th.IsBackground = true;
+            th.Start();
+        }
+
+        private static void StartHostRelayWorker()
+        {
+            Thread hostTh = new Thread(() =>
+            {
+                UdpClient probeUdp = null;
+                try
+                {
+                    probeUdp = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
+                    probeUdp.Client.ReceiveTimeout = 160;
+                }
+                catch { }
+
+                TcpClient ctrlClient = null;
+                Stream ctrlStream = null;
+                object ctrlLock = new object();
+                string connectedRid = "";
+                string lastPostedAdHex = "";
+                int lastHttpPostTicks = 0;
+                int missCount = 0;
+                int lastPingTicks = Environment.TickCount;
+
+                while (running)
+                {
+                    try
+                    {
+                        string rid = currentRoomId;
+                        if (string.IsNullOrEmpty(rid) || !isCurrentRoomOwner)
+                        {
+                            if (ctrlClient != null)
+                            {
+                                try { ctrlClient.Close(); } catch { }
+                                ctrlClient = null;
+                                ctrlStream = null;
+                            }
+                            connectedRid = "";
+                            lastPostedAdHex = "";
+                            missCount = 0;
+                            Thread.Sleep(500);
+                            continue;
+                        }
+
+                        int war3Port = GetLocalWar3NetGamePort();
+
+                        // 1. Ensure HOST_CTRL TCP connection to Server is open
+                        if (ctrlClient == null || !ctrlClient.Connected || connectedRid != rid)
+                        {
+                            try { if (ctrlClient != null) ctrlClient.Close(); } catch { }
+                            ctrlClient = new TcpClient(W3GS_HOST, w3gsPort);
+                            ctrlClient.NoDelay = true;
+                            ctrlStream = ctrlClient.GetStream();
+                            connectedRid = rid;
+                            lastPostedAdHex = "";
+                            byte[] regBody = Encoding.UTF8.GetBytes("HOST_CTRL:" + rid + ":" + (currentUsername ?? "Host") + ":" + war3Port);
+                            byte[] regPkt = new byte[4 + regBody.Length];
+                            regPkt[0] = 0xF7;
+                            regPkt[1] = 0x5A;
+                            regPkt[2] = (byte)(regPkt.Length & 0xFF);
+                            regPkt[3] = (byte)((regPkt.Length >> 8) & 0xFF);
+                            Buffer.BlockCopy(regBody, 0, regPkt, 4, regBody.Length);
+                            lock (ctrlLock)
+                            {
+                                ctrlStream.Write(regPkt, 0, regPkt.Length);
+                            }
+
+                            TcpClient activeCtrl = ctrlClient;
+                            Stream activeStream = ctrlStream;
+                            string activeRid = rid;
+                            Thread readerTh = new Thread(() =>
+                            {
+                                try
+                                {
+                                    byte[] rbuf = new byte[4096];
+                                    List<byte> acc = new List<byte>();
+                                    int rn;
+                                    while (running && activeCtrl.Connected && (rn = activeStream.Read(rbuf, 0, rbuf.Length)) > 0)
+                                    {
+                                        for (int i = 0; i < rn; i++) acc.Add(rbuf[i]);
+                                        while (acc.Count >= 4)
+                                        {
+                                            if (acc[0] != 0xF7)
+                                            {
+                                                acc.RemoveAt(0);
+                                                continue;
+                                            }
+                                            int plen = acc[2] | (acc[3] << 8);
+                                            if (plen < 4 || plen > 2048)
+                                            {
+                                                acc.Clear();
+                                                break;
+                                            }
+                                            if (acc.Count < plen) break;
+                                            byte pid = acc[1];
+                                            byte[] pkt = acc.GetRange(0, plen).ToArray();
+                                            acc.RemoveRange(0, plen);
+                                            if (pid == 0x5B && plen > 4)
+                                            {
+                                                string cmdStr = Encoding.UTF8.GetString(pkt, 4, plen - 4);
+                                                string[] sp = cmdStr.Split(':');
+                                                if (sp.Length >= 2)
+                                                {
+                                                    int hPort = 6112;
+                                                    int.TryParse(sp[1], out hPort);
+                                                    BridgeHostTunnelSession(activeRid, sp[0], hPort > 0 ? hPort : 6112);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                                try { activeCtrl.Close(); } catch { }
+                            });
+                            readerTh.IsBackground = true;
+                            readerTh.Start();
+                        }
+
+                        // 2. Probe local Warcraft III (127.0.0.1:war3Port) via W3GS_SEARCHGAME (0xF7 0x2F)
+                        byte[] foundAd = null;
+                        int foundPort = war3Port;
+                        if (probeUdp != null && IsWarcraftRunning())
+                        {
+                            byte[] searchPkt26 = new byte[] { 0xF7, 0x2F, 0x10, 0x00, 0x50, 0x58, 0x33, 0x57, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+                            IPEndPoint epTarget = new IPEndPoint(IPAddress.Loopback, war3Port);
+                            try { probeUdp.Send(searchPkt26, searchPkt26.Length, epTarget); } catch { }
+                            try
+                            {
+                                IPEndPoint remoteEp = new IPEndPoint(IPAddress.Any, 0);
+                                byte[] resp = probeUdp.Receive(ref remoteEp);
+                                if (resp != null && resp.Length >= 26 && resp[0] == 0xF7 && resp[1] == 0x30)
+                                {
+                                    int adPort = resp[resp.Length - 2] | (resp[resp.Length - 1] << 8);
+                                    if (adPort > 0 && adPort != localProxyPort)
+                                    {
+                                        foundAd = resp;
+                                        foundPort = adPort;
+                                    }
+                                }
+                                while (probeUdp.Available > 0)
+                                {
+                                    byte[] extra = probeUdp.Receive(ref remoteEp);
+                                    if (extra != null && extra.Length >= 26 && extra[0] == 0xF7 && extra[1] == 0x30)
+                                    {
+                                        int adPort = extra[extra.Length - 2] | (extra[extra.Length - 1] << 8);
+                                        if (adPort > 0 && adPort != localProxyPort)
+                                        {
+                                            foundAd = extra;
+                                            foundPort = adPort;
+                                        }
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+
+                        if (foundAd != null)
+                        {
+                            missCount = 0;
+                            byte[] adFrame = new byte[6 + foundAd.Length];
+                            adFrame[0] = 0xF7;
+                            adFrame[1] = 0x5D;
+                            adFrame[2] = (byte)(adFrame.Length & 0xFF);
+                            adFrame[3] = (byte)((adFrame.Length >> 8) & 0xFF);
+                            adFrame[4] = (byte)(foundPort & 0xFF);
+                            adFrame[5] = (byte)((foundPort >> 8) & 0xFF);
+                            Buffer.BlockCopy(foundAd, 0, adFrame, 6, foundAd.Length);
+                            if (ctrlStream != null)
+                            {
+                                lock (ctrlLock)
+                                {
+                                    ctrlStream.Write(adFrame, 0, adFrame.Length);
+                                }
+                            }
+                            string hexNow = BytesToHex(foundAd);
+                            if (hexNow != lastPostedAdHex || Math.Abs(Environment.TickCount - lastHttpPostTicks) > 2500)
+                            {
+                                lastPostedAdHex = hexNow;
+                                lastHttpPostTicks = Environment.TickCount;
+                                string postRid = rid;
+                                int postPort = foundPort;
+                                ThreadPool.QueueUserWorkItem(_ =>
+                                {
+                                    try { ApiRequest("POST", "/api/rooms/" + postRid + "/host_lan_ad", "{\"lan_ad_hex\":\"" + hexNow + "\",\"host_port\":" + postPort + "}"); } catch { }
+                                });
+                            }
+                        }
+                        else
+                        {
+                            missCount++;
+                            if (missCount >= 4 && !string.IsNullOrEmpty(lastPostedAdHex))
+                            {
+                                lastPostedAdHex = "";
+                                byte[] clrFrame = new byte[] { 0xF7, 0x5D, 0x04, 0x00 };
+                                if (ctrlStream != null)
+                                {
+                                    lock (ctrlLock)
+                                    {
+                                        try { ctrlStream.Write(clrFrame, 0, clrFrame.Length); } catch { }
+                                    }
+                                }
+                                string postRid = rid;
+                                ThreadPool.QueueUserWorkItem(_ =>
+                                {
+                                    try { ApiRequest("POST", "/api/rooms/" + postRid + "/host_lan_ad", "{\"lan_ad_hex\":\"\",\"host_port\":6112}"); } catch { }
+                                });
+                            }
+                            else if (ctrlStream != null && Math.Abs(Environment.TickCount - lastPingTicks) > 5000)
+                            {
+                                lastPingTicks = Environment.TickCount;
+                                byte[] hb = new byte[] { 0xF7, 0x5A, 0x04, 0x00 };
+                                lock (ctrlLock)
+                                {
+                                    ctrlStream.Write(hb, 0, hb.Length);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        try { if (ctrlClient != null) ctrlClient.Close(); } catch { }
+                        ctrlClient = null;
+                        ctrlStream = null;
+                    }
+                    Thread.Sleep(400);
+                }
+            });
+            hostTh.IsBackground = true;
+            hostTh.Start();
         }
 
         private static void BridgeTcpSession(TcpClient localClient)
